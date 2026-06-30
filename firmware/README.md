@@ -11,11 +11,15 @@ The MacBook screen share lives in the browser, so the device cannot capture the
 screen itself. It uses the M3 **remote bridge** HTTP endpoints:
 
 ```
-Tap screen ──► POST /api/remote/trigger ──► browser sees it on GET /api/remote/poll
-                                            browser captures + interprets the frame
-                                            browser ──► POST /api/remote/answer
-Device polls  GET /api/remote/answer  ◄──── {status, answer_id, answer}
+Device taps ──► (WS) {type:trigger} ──► browser sees it on GET /api/remote/poll
+                                        browser captures + interprets the frame
+                                        browser ──► POST /api/remote/answer
+Server pushes (WS) {type:answer} ─────► device renders it instantly
 ```
+
+The device opens a WebSocket to `ws://<backend>/api/remote/ws`: it sends a
+`{type:trigger}` on tap and receives pushed `{type:answer}` / `{type:status}`
+messages in real time (no polling).
 
 The device shows: a spinner while working, then the big result letter(s), the
 short result text, and a confidence ring around the edge. (This is superseded by
@@ -102,8 +106,8 @@ IDE sketch in [arduino/ai_exams_display/](arduino/ai_exams_display/) (same code)
    `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
    then Boards Manager → install **esp32 by Espressif Systems** (the Waveshare wiki
    recommends **2.0.12** for this board).
-3. Library Manager → install **LovyanGFX**, **ArduinoJson** (v7), and
-   **WiFiManager** (by tzapu).
+3. Library Manager → install **LovyanGFX**, **ArduinoJson** (v7),
+   **WiFiManager** (by tzapu), and **WebSockets** (by Markus Sattler).
 4. Open `arduino/ai_exams_display/ai_exams_display.ino`.
 5. Tools → Board: **ESP32S3 Dev Module**, then set:
    - **USB CDC On Boot:** Enabled

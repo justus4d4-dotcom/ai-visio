@@ -15,9 +15,11 @@ WebSocket push in M8.
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from app.schemas import SolveResult
@@ -32,6 +34,46 @@ _state: dict[str, object] = {
     "answer_id": None,
     "answer": None,
 }
+
+
+class DeviceHub:
+    """Tracks connected ESP32 WebSocket clients and pushes answers to them."""
+
+    def __init__(self) -> None:
+        self._conns: dict[str, WebSocket] = {}
+        self._meta: dict[str, dict[str, object]] = {}
+
+    async def connect(self, ws: WebSocket) -> str:
+        await ws.accept()
+        cid = str(uuid.uuid4())
+        self._conns[cid] = ws
+        self._meta[cid] = {
+            "id": cid,
+            "remote": ws.client.host if ws.client else None,
+            "connected_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+        return cid
+
+    def disconnect(self, cid: str) -> None:
+        self._conns.pop(cid, None)
+        self._meta.pop(cid, None)
+
+    async def broadcast(self, message: dict[str, object]) -> None:
+        for cid, ws in list(self._conns.items()):
+            try:
+                await ws.send_json(message)
+            except Exception:  # noqa: BLE001 - drop dead sockets
+                self.disconnect(cid)
+
+    @property
+    def count(self) -> int:
+        return len(self._conns)
+
+    def devices(self) -> list[dict[str, object]]:
+        return list(self._meta.values())
+
+
+hub = DeviceHub()
 
 
 class TriggerResponse(BaseModel):
@@ -74,25 +116,59 @@ def poll() -> PollResponse:
 
 
 @router.post("/status", response_model=RemoteState)
-def set_status(update: StatusUpdate) -> RemoteState:
-    """Browser reports it is solving (or hit an error)."""
+async def set_status(update: StatusUpdate) -> RemoteState:
+    """Browser reports it is solving (or hit an error); pushed to connected devices."""
     _state["status"] = update.status
-    return _current()
+    state = _current()
+    await hub.broadcast({"type": "status", **state.model_dump()})
+    return state
 
 
 @router.post("/answer", response_model=RemoteState)
-def post_answer(answer: SolveResult) -> RemoteState:
-    """Browser posts the solved answer; ESP32 will pick it up on its next poll."""
+async def post_answer(answer: SolveResult) -> RemoteState:
+    """Browser posts the solved answer; pushed instantly to connected devices."""
     _state["answer"] = answer.model_dump()
     _state["answer_id"] = str(uuid.uuid4())
     _state["status"] = "done"
-    return _current()
+    state = _current()
+    await hub.broadcast({"type": "answer", **state.model_dump()})
+    return state
 
 
 @router.get("/answer", response_model=RemoteState)
 def get_answer() -> RemoteState:
     """Called by the ESP32 to render the latest status/answer."""
     return _current()
+
+
+@router.get("/devices")
+def list_devices() -> dict[str, object]:
+    """Connected device count + metadata, for the web UI status indicator."""
+    return {"count": hub.count, "devices": hub.devices()}
+
+
+@router.websocket("/ws")
+async def device_ws(ws: WebSocket) -> None:
+    """ESP32 connects here to receive pushed answers and send touch triggers."""
+    cid = await hub.connect(ws)
+    try:
+        # Send current state immediately so a freshly-connected device syncs.
+        await ws.send_json({"type": "state", **_current().model_dump()})
+        while True:
+            raw = await ws.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if msg.get("type") == "trigger":
+                # A touch on the device: mark pending so the browser solves the frame.
+                _state["pending"] = True
+                _state["trigger_id"] = str(uuid.uuid4())
+                _state["status"] = "requested"
+    except WebSocketDisconnect:
+        hub.disconnect(cid)
+    except Exception:  # noqa: BLE001
+        hub.disconnect(cid)
 
 
 def _current() -> RemoteState:

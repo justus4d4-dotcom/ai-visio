@@ -167,6 +167,7 @@ export default function Home() {
   // On a trigger, capture + interpret here in the browser, then post the result back so
   // the device can display it.
   const [remoteStatus, setRemoteStatus] = useState("idle");
+  const [deviceCount, setDeviceCount] = useState(0);
 
   useEffect(() => {
     if (!capturing) {
@@ -207,6 +208,19 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capturing, cfg]);
+
+  // Poll how many ESP32 devices are connected over WebSocket.
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const d = await fetch(`${API_URL}/api/remote/devices`).then((r) => r.json());
+        setDeviceCount(d.count ?? 0);
+      } catch {
+        /* ignore */
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
 
   async function simulateTouch() {
     try {
@@ -330,6 +344,16 @@ export default function Home() {
 
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
             <span className="text-sm">ESP32 display</span>
+            <span
+              className={
+                "rounded px-1.5 py-0.5 text-xs " +
+                (deviceCount > 0
+                  ? "bg-green-900 text-green-300"
+                  : "bg-neutral-800 text-neutral-400")
+              }
+            >
+              {deviceCount} connected
+            </span>
             <button
               onClick={simulateTouch}
               disabled={!capturing}

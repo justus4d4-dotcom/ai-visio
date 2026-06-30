@@ -21,7 +21,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <WebSocketsClient.h>
 #include <Preferences.h>
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
@@ -52,6 +52,8 @@ static LGFX lcd;
 static LGFX_Sprite canvas(&lcd);  // full-screen off-screen buffer (flicker-free)
 static Preferences prefs;
 static WiFiManager wifiManager;
+static WebSocketsClient g_ws;
+static bool g_wsConnected = false;
 
 static const uint16_t W = SCREEN_WIDTH;
 static const uint16_t H = SCREEN_HEIGHT;
@@ -72,8 +74,6 @@ static UiState g_state = UiState::Connecting;
 static String g_lastAnswerId;
 static uint32_t g_triggerAt = 0;          // millis() when we sent the trigger
 static const uint32_t SOLVE_TIMEOUT_MS = 15000;
-static uint32_t g_lastPollAt = 0;
-static const uint32_t POLL_INTERVAL_MS = 400;
 static String g_errorMsg;
 
 // Latest answer to render.
@@ -241,67 +241,42 @@ static void renderSetupQR() {
 }
 
 // ---------------------------------------------------------------------------
-// Networking
+// Networking (WebSocket push)
 // ---------------------------------------------------------------------------
-static bool httpGet(const String& url, String& out) {
-  HTTPClient http;
-  http.setConnectTimeout(2500);
-  http.setTimeout(4000);
-  if (!http.begin(url)) return false;
-  const int code = http.GET();
-  bool ok = false;
-  if (code == HTTP_CODE_OK) {
-    out = http.getString();
-    ok = true;
+
+// Apply a pushed answer object to the UI state.
+static void applyAnswer(JsonObjectConst a, const char* answerId) {
+  String letters;
+  JsonArrayConst arr = a["answer_letters"].as<JsonArrayConst>();
+  for (JsonVariantConst v : arr) {
+    if (letters.length()) letters += ", ";
+    letters += v.as<const char*>();
   }
-  http.end();
-  return ok;
+  g_answer.letters = letters;
+  g_answer.text = String((const char*)(a["answer_text"] | ""));
+  g_answer.qtype = String((const char*)(a["question_type"] | "unknown"));
+  g_answer.confidence = a["confidence"] | 0.0f;
+  g_answer.cached = a["cached"] | false;
+  g_lastAnswerId = String(answerId);
+  g_state = UiState::Answer;
 }
 
-static bool httpPost(const String& url, const String& body, String& out) {
-  HTTPClient http;
-  http.setConnectTimeout(2500);
-  http.setTimeout(4000);
-  if (!http.begin(url)) return false;
-  http.addHeader("Content-Type", "application/json");
-  const int code = http.POST(body);
-  bool ok = false;
-  if (code == HTTP_CODE_OK) {
-    out = http.getString();
-    ok = true;
-  }
-  http.end();
-  return ok;
-}
-
-// Read the current answer_id so a stale answer is not shown after boot.
-static void primeBaselineAnswerId() {
-  String body;
-  if (httpGet(g_serverUrl + "/api/remote/answer", body)) {
-    JsonDocument doc;
-    if (deserializeJson(doc, body) == DeserializationError::Ok) {
-      const char* aid = doc["answer_id"] | "";
-      g_lastAnswerId = String(aid);
-    }
-  }
-}
-
-static bool sendTrigger() {
-  String out;
-  if (!httpPost(g_serverUrl + "/api/remote/trigger", "{}", out)) return false;
-  return true;
-}
-
-// Poll the bridge; updates state if a fresh answer or error arrives.
-static void pollAnswer() {
-  String body;
-  if (!httpGet(g_serverUrl + "/api/remote/answer", body)) return;
-
+// Handle a JSON message pushed by the server over the WebSocket.
+static void handleWsMessage(const uint8_t* payload, size_t len) {
   JsonDocument doc;
-  if (deserializeJson(doc, body) != DeserializationError::Ok) return;
+  if (deserializeJson(doc, payload, len) != DeserializationError::Ok) return;
 
+  const char* type = doc["type"] | "";
   const char* status = doc["status"] | "idle";
   const char* answerId = doc["answer_id"] | "";
+
+  // Initial sync on connect: baseline the answer id so a stale answer left on
+  // the server is not shown.
+  if (strcmp(type, "state") == 0) {
+    g_lastAnswerId = String(answerId);
+    if (g_state == UiState::Connecting) g_state = UiState::Idle;
+    return;
+  }
 
   if (strcmp(status, "error") == 0) {
     g_errorMsg = "solve failed";
@@ -309,27 +284,62 @@ static void pollAnswer() {
     return;
   }
 
-  // A genuinely new, completed answer.
   if (strcmp(status, "done") == 0 && strlen(answerId) > 0 &&
       String(answerId) != g_lastAnswerId) {
-    JsonObject a = doc["answer"].as<JsonObject>();
-    if (!a.isNull()) {
-      // Join answer_letters into a display string.
-      String letters;
-      JsonArray arr = a["answer_letters"].as<JsonArray>();
-      for (JsonVariant v : arr) {
-        if (letters.length()) letters += ", ";
-        letters += v.as<const char*>();
-      }
-      g_answer.letters = letters;
-      g_answer.text = String((const char*)(a["answer_text"] | ""));
-      g_answer.qtype = String((const char*)(a["question_type"] | "unknown"));
-      g_answer.confidence = a["confidence"] | 0.0f;
-      g_answer.cached = a["cached"] | false;
-      g_lastAnswerId = String(answerId);
-      g_state = UiState::Answer;
-    }
+    JsonObjectConst a = doc["answer"].as<JsonObjectConst>();
+    if (!a.isNull()) applyAnswer(a, answerId);
   }
+}
+
+static void onWsEvent(WStype_t type, uint8_t* payload, size_t len) {
+  switch (type) {
+    case WStype_CONNECTED:
+      g_wsConnected = true;
+      if (g_state == UiState::Connecting) g_state = UiState::Idle;
+      break;
+    case WStype_DISCONNECTED:
+      g_wsConnected = false;
+      g_state = UiState::Connecting;
+      break;
+    case WStype_TEXT:
+      handleWsMessage(payload, len);
+      break;
+    default:
+      break;
+  }
+}
+
+// Split g_serverUrl ("http://host:port") into host and port.
+static void parseServer(String& host, uint16_t& port) {
+  String u = g_serverUrl;
+  port = 80;
+  const int scheme = u.indexOf("://");
+  if (scheme >= 0) u = u.substring(scheme + 3);
+  const int slash = u.indexOf('/');
+  if (slash >= 0) u = u.substring(0, slash);
+  const int colon = u.indexOf(':');
+  if (colon >= 0) {
+    host = u.substring(0, colon);
+    port = (uint16_t)u.substring(colon + 1).toInt();
+    if (port == 0) port = 80;
+  } else {
+    host = u;
+  }
+}
+
+static void setupWebSocket() {
+  String host;
+  uint16_t port;
+  parseServer(host, port);
+  g_ws.begin(host, port, "/api/remote/ws");
+  g_ws.onEvent(onWsEvent);
+  g_ws.setReconnectInterval(3000);
+}
+
+// Send a touch trigger to the server (the browser then solves the current frame).
+static bool wsTrigger() {
+  if (!g_wsConnected) return false;
+  return g_ws.sendTXT("{\"type\":\"trigger\"}");
 }
 
 // ---------------------------------------------------------------------------
@@ -474,10 +484,10 @@ void setup() {
   }
 
   setupOTA();
+  setupWebSocket();
 
-  renderConnecting("ready");
-  primeBaselineAnswerId();
-  g_state = UiState::Idle;
+  renderConnecting("connecting...");
+  g_state = UiState::Connecting;
 }
 
 void loop() {
@@ -487,25 +497,28 @@ void loop() {
     renderConnecting("reconnecting...");
     WiFi.reconnect();
     delay(500);
-    if (WiFi.status() == WL_CONNECTED) g_state = UiState::Idle;
     return;
   }
 
   // Service OTA update requests (Arduino IDE network port / PlatformIO espota).
   ArduinoOTA.handle();
+  g_ws.loop();
 
   const bool tapped = touchTapped();
 
   switch (g_state) {
+    case UiState::Connecting:
+      renderConnecting("connecting...");
+      break;
+
     case UiState::Idle:
       renderIdle();
       if (tapped) {
-        if (sendTrigger()) {
+        if (wsTrigger()) {
           g_triggerAt = millis();
-          g_lastPollAt = 0;
           g_state = UiState::Solving;
         } else {
-          g_errorMsg = "no backend";
+          g_errorMsg = "no link";
           g_state = UiState::Error;
         }
       }
@@ -513,11 +526,7 @@ void loop() {
 
     case UiState::Solving:
       renderSolving();
-      if (millis() - g_lastPollAt >= POLL_INTERVAL_MS) {
-        g_lastPollAt = millis();
-        pollAnswer();
-      }
-      if (g_state == UiState::Solving && millis() - g_triggerAt > SOLVE_TIMEOUT_MS) {
+      if (millis() - g_triggerAt > SOLVE_TIMEOUT_MS) {
         g_errorMsg = "timed out";
         g_state = UiState::Error;
       }
@@ -526,12 +535,11 @@ void loop() {
     case UiState::Answer:
       renderAnswer();
       if (tapped) {  // tap again to solve the next question
-        if (sendTrigger()) {
+        if (wsTrigger()) {
           g_triggerAt = millis();
-          g_lastPollAt = 0;
           g_state = UiState::Solving;
         } else {
-          g_errorMsg = "no backend";
+          g_errorMsg = "no link";
           g_state = UiState::Error;
         }
       }
@@ -542,7 +550,6 @@ void loop() {
       if (tapped) g_state = UiState::Idle;
       break;
 
-    case UiState::Connecting:
     default:
       g_state = UiState::Idle;
       break;
