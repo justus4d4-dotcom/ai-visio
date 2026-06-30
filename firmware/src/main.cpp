@@ -449,6 +449,12 @@ static bool connectWifiDirect() {
     return true;
   }
   Serial.printf("[wifi] FAILED, status=%d\n", (int)WiFi.status());
+  // Also surface the failure on the round screen (serial may be unavailable).
+  // status: 1=SSID not found (often 5GHz), 4=connect failed, 6=wrong password.
+  char msg[40];
+  snprintf(msg, sizeof(msg), "WiFi fail: status %d", (int)WiFi.status());
+  renderConnecting(msg);
+  delay(3000);
   return false;
 #else
   return false;
