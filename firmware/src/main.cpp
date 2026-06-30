@@ -21,8 +21,17 @@
 #include <Preferences.h>
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
+#include <ArduinoOTA.h>
 
 #include "lgfx_config.h"
+
+// OTA (over-the-air) update identity. Override via build_flags in platformio.ini.
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "ai-image-display"
+#endif
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD "change-this-ota-pass"
+#endif
 
 // ---------------------------------------------------------------------------
 // Globals
@@ -183,6 +192,23 @@ static void renderError(const char* msg) {
   canvas.drawString(msg, CX, CY + 14);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.drawString("tap to retry", CX, CY + 40);
+  canvas.pushSprite(0, 0);
+}
+
+static void renderOtaProgress(int pct) {
+  canvas.fillScreen(COL_BG);
+  // Progress arc from the top, clockwise.
+  canvas.fillArc(CX, CY, CX - 10, CX - 4, 0, 360, COL_MUTED);
+  if (pct > 0) {
+    canvas.fillArc(CX, CY, CX - 10, CX - 4, -90, -90 + 3.6f * pct, COL_ACCENT);
+  }
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_TEXT, COL_BG);
+  canvas.setTextSize(2);
+  canvas.drawString("Updating", CX, CY - 14);
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d%%", pct);
+  canvas.drawString(buf, CX, CY + 16);
   canvas.pushSprite(0, 0);
 }
 
@@ -352,6 +378,19 @@ static void runProvisioning(bool forcePortal) {
   }
 }
 
+// Enable over-the-air updates (PlatformIO `espota` / Arduino IDE network port).
+static void setupOTA() {
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.onStart([]() { renderOtaProgress(0); });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    renderOtaProgress(total ? (int)(progress * 100 / total) : 0);
+  });
+  ArduinoOTA.onEnd([]() { renderConnecting("update done; rebooting"); });
+  ArduinoOTA.onError([](ota_error_t) { renderError("OTA failed"); });
+  ArduinoOTA.begin();
+}
+
 // ---------------------------------------------------------------------------
 // Arduino entry points
 // ---------------------------------------------------------------------------
@@ -377,6 +416,8 @@ void setup() {
 
   runProvisioning(forcePortal);
 
+  setupOTA();
+
   renderConnecting("ready");
   primeBaselineAnswerId();
   g_state = UiState::Idle;
@@ -392,6 +433,9 @@ void loop() {
     if (WiFi.status() == WL_CONNECTED) g_state = UiState::Idle;
     return;
   }
+
+  // Service OTA update requests (PlatformIO espota / Arduino IDE network port).
+  ArduinoOTA.handle();
 
   const bool tapped = touchTapped();
 

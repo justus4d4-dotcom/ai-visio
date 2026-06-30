@@ -51,6 +51,35 @@ pio device monitor      # serial logs @ 115200
 VS Code: install the **PlatformIO IDE** extension, open this `firmware/` folder,
 then use the PlatformIO toolbar (build / upload / monitor).
 
+## Over-the-air (OTA) updates (from VS Code)
+
+After the **first** USB flash, all later updates can go over WiFi — no cable
+needed. The firmware runs an ArduinoOTA service once it joins WiFi.
+
+1. Read the device IP from its **idle screen** (shown under "Tap to scan").
+2. Set the password and IP. The OTA password is defined in two places that must
+   match: `OTA_PASSWORD` in [platformio.ini](platformio.ini) `build_flags`, and
+   `--auth=` in the `[env:waveshare-s3-round-ota]` section. **Change the default
+   `change-this-ota-pass` before deploying.**
+3. Upload over the network:
+
+   ```bash
+   pio run -e waveshare-s3-round-ota -t upload --upload-port <device-ip>
+   ```
+
+   In VS Code: pick the **waveshare-s3-round-ota** environment in the PlatformIO
+   project tasks, set `upload_port` to the device IP (or pass `--upload-port`),
+   then run **Upload**. The round screen shows an "Updating %" ring during flash
+   and reboots into the new firmware.
+
+Arduino IDE OTA: after the first USB flash, the device also appears under
+**Tools → Port → Network ports** as `ai-image-display`; select it and Upload
+(enter the OTA password when prompted).
+
+> OTA needs the device and your computer on the same network. The OTA password
+> protects the device from unauthorized flashes — keep it secret.
+
+
 ## First-time setup (WiFi + backend URL)
 
 1. On first boot the device hosts a WiFi access point named **`ai-exams-setup`**.
