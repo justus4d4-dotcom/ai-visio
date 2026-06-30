@@ -499,6 +499,14 @@ void setup() {
     runProvisioning(true);
   }
 
+#ifdef WIFI_SSID
+  // Built-in WiFi credentials imply a built-in backend URL: keep them in sync
+  // (overrides any stale value saved in NVS).
+  if (connected && g_serverUrl != DEFAULT_BACKEND_URL) {
+    saveServerUrl(DEFAULT_BACKEND_URL);
+  }
+#endif
+
   // Ensure a backend URL exists even when the portal was skipped.
   if (g_serverUrl.isEmpty()) {
     saveServerUrl(DEFAULT_BACKEND_URL);
