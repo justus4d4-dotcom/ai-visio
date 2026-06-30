@@ -20,6 +20,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from app.schemas import GeminiConfig, QuestionType, SolveResult
+from app import pricing
 
 # Transient statuses worth retrying (overload / rate limit).
 _RETRY_STATUSES = {429, 503}
@@ -138,10 +139,32 @@ def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
 
     resp = _generate_with_retry(client, cfg.model, data, mime, config)
 
-    parsed: _GeminiAnswer = resp.parsed
-    tokens = None
+    prompt_tokens = output_tokens = total_tokens = None
     if resp.usage_metadata is not None:
-        tokens = resp.usage_metadata.total_token_count
+        prompt_tokens = resp.usage_metadata.prompt_token_count
+        output_tokens = resp.usage_metadata.candidates_token_count
+        total_tokens = resp.usage_metadata.total_token_count
+    cost = pricing.estimate_cost(cfg.model, prompt_tokens, output_tokens)
+
+    parsed: _GeminiAnswer | None = resp.parsed
+    if parsed is None:
+        # Gemini returned no parseable structured output (blocked, truncated, or a
+        # non-question image). Return a graceful "unknown" result instead of crashing
+        # so the device/UI shows a friendly message and the call is still metered.
+        return SolveResult(
+            question_text="",
+            question_type="unknown",
+            answer_letters=[],
+            answer_text="No answer could be read from this image.",
+            confidence=0.0,
+            reasoning=None,
+            model=cfg.model,
+            tokens_used=total_tokens,
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            cached=False,
+        )
 
     return SolveResult(
         question_text=parsed.question_text.strip(),
@@ -151,6 +174,9 @@ def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
         confidence=float(parsed.confidence or 0.0),
         reasoning=None,
         model=cfg.model,
-        tokens_used=tokens,
+        tokens_used=total_tokens,
+        prompt_tokens=prompt_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
         cached=False,
     )

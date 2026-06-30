@@ -113,3 +113,23 @@ class Answer(Base):
     provider_label: Mapped[str | None] = mapped_column(String, nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
+class UsageEvent(Base):
+    """One metered LLM call, used for the cost / token-usage monitoring dashboard.
+
+    A row is written for every solve — including cache hits (cost 0) — so the totals
+    reflect real API spend vs. money saved by the dedup cache.
+    """
+
+    __tablename__ = "usage_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    model: Mapped[str] = mapped_column(String, index=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    cached: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)

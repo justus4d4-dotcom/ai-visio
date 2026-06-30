@@ -1,0 +1,24 @@
+[Unit]
+Description=AI Image Interpreter - FastAPI backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiexams
+Group=aiexams
+WorkingDirectory=/opt/ai-exams/backend
+# Secrets (DATABASE_URL, ENCRYPTION_KEY, AUTH_SECRET, ...) live in this file, mode 0600.
+EnvironmentFile=/opt/ai-exams/backend/.env
+ExecStart=/opt/ai-exams/backend/.venv/bin/uvicorn app.main:app \
+  --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

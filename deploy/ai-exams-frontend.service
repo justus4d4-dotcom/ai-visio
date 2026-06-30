@@ -1,0 +1,25 @@
+[Unit]
+Description=AI Image Interpreter - Next.js frontend
+After=network-online.target ai-exams-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiexams
+Group=aiexams
+WorkingDirectory=/opt/ai-exams/frontend
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# NEXT_PUBLIC_API_URL is baked in at build time; runtime env lives here if needed.
+EnvironmentFile=-/opt/ai-exams/frontend/.env.production
+# Requires a prior production build: `pnpm install && pnpm build`.
+ExecStart=/usr/bin/pnpm start
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

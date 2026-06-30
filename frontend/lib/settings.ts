@@ -12,6 +12,9 @@ export type SolveResult = {
   reasoning?: string | null;
   model: string;
   tokens_used?: number | null;
+  prompt_tokens?: number | null;
+  output_tokens?: number | null;
+  cost_usd?: number | null;
   elapsed_ms?: number | null;
   cached: boolean;
 };

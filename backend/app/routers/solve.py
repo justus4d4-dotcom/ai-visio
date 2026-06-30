@@ -18,7 +18,7 @@ from google.genai import errors as genai_errors
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app import gemini, history_store
+from app import gemini, history_store, usage_store
 from app.database import get_db
 from app.gemini import friendly_provider_error
 from app.schemas import GeminiConfig, SolveResult
@@ -67,7 +67,14 @@ async def solve(
     digest = hashlib.sha256(data).hexdigest()
     cached = _cache_get(digest)
     if cached is not None:
-        return cached.model_copy(update={"cached": True})
+        hit = cached.model_copy(update={"cached": True})
+        # Record the cache hit (cost 0) so the dashboard reflects requests served
+        # without an API call.
+        try:
+            usage_store.record_usage(db, hit)
+        except Exception:  # noqa: BLE001
+            logging.exception("Failed to record cached usage event")
+        return hit
 
     try:
         started = time.perf_counter()
@@ -79,6 +86,12 @@ async def solve(
         raise HTTPException(status_code=422, detail=str(exc))
 
     _cache_put(digest, result)
+
+    # Record the metered API call for the monitoring dashboard (best-effort).
+    try:
+        usage_store.record_usage(db, result)
+    except Exception:  # noqa: BLE001
+        logging.exception("Failed to record usage event")
 
     # Persist to history (best-effort: never fail the solve if the DB is unavailable).
     try:

@@ -65,9 +65,12 @@ static String g_serverUrl;
 // WiFiManager custom field buffer for the server URL.
 static char g_serverUrlBuf[96] = "http://192.0.2.10:8000";
 static bool g_shouldSaveParams = false;
+// Persistent WiFiManager custom parameter (backend URL); added to the portal once.
+static WiFiManagerParameter g_serverParam("server", "Backend base URL", "", 96);
+static bool g_paramAdded = false;
 
 // Device-side state machine.
-enum class UiState { Connecting, Idle, Solving, Answer, Error };
+enum class UiState { Connecting, Idle, Solving, Answer, Error, Settings };
 static UiState g_state = UiState::Connecting;
 
 // Baseline answer id so we ignore a stale answer left on the server.
@@ -86,10 +89,22 @@ struct Answer {
 };
 static Answer g_answer;
 
-// Touch edge detection.
-static bool g_wasTouched = false;
+// Touch / gesture tracking.
 static uint32_t g_lastTouchAt = 0;
 static const uint32_t TOUCH_DEBOUNCE_MS = 250;
+static bool g_gestureActive = false;   // a touch is currently held down
+static bool g_gestureSwiped = false;   // current gesture already fired a swipe
+static int32_t g_gestureStartX = 0;
+static int32_t g_gestureStartY = 0;
+static const int16_t SWIPE_TOP_ZONE = 60;      // swipe must start in the top 60px
+static const int16_t SWIPE_MIN_DISTANCE = 70;  // and travel at least 70px down
+
+// Settings screen state.
+static int g_settingsScroll = 0;         // pixels scrolled within the settings list
+static int g_settingsContentH = 0;       // total content height (computed each render)
+static bool g_settingsDragging = false;  // a drag is in progress on the settings screen
+static int32_t g_settingsDragStartY = 0;
+static int32_t g_settingsLastY = 0;
 
 // ---------------------------------------------------------------------------
 // Colours (RGB565)
@@ -162,6 +177,49 @@ static void renderSolving() {
   canvas.pushSprite(0, 0);
 }
 
+// Draw text centred and word-wrapped across up to maxLines lines, keeping a
+// side margin so nothing is clipped by the round bezel. Overflowing text is
+// truncated with an ellipsis on the final line.
+static void drawWrappedCentered(const String& text, int cx, int topY,
+                                int maxWidth, int lineH, int maxLines) {
+  String lines[4];
+  int count = 0;
+  String line;
+  int pos = 0;
+  const int len = text.length();
+
+  while (pos < len && count < maxLines) {
+    int sp = text.indexOf(' ', pos);
+    String word = (sp < 0) ? text.substring(pos) : text.substring(pos, sp);
+    String trial = line.length() ? line + " " + word : word;
+    if (line.length() == 0 || canvas.textWidth(trial.c_str()) <= maxWidth) {
+      line = trial;
+    } else {
+      lines[count++] = line;
+      line = word;
+    }
+    pos = (sp < 0) ? len : sp + 1;
+  }
+  if (count < maxLines && line.length()) {
+    lines[count++] = line;
+    line = "";
+  }
+
+  // Anything left over means we ran out of lines and must truncate.
+  if ((pos < len || line.length()) && count > 0) {
+    String last = lines[count - 1];
+    while (last.length() &&
+           canvas.textWidth((last + "...").c_str()) > maxWidth) {
+      last.remove(last.length() - 1);
+    }
+    lines[count - 1] = last + "...";
+  }
+
+  for (int i = 0; i < count; i++) {
+    canvas.drawString(lines[i].c_str(), cx, topY + i * lineH);
+  }
+}
+
 static void renderAnswer() {
   canvas.fillScreen(COL_BG);
   drawConfidenceRing(g_answer.confidence);
@@ -177,17 +235,16 @@ static void renderAnswer() {
   canvas.setTextSize(size);
   canvas.drawString(letters, CX, CY - 18);
 
-  // Short answer text below, wrapped to fit the round area.
+  // Short answer text below, wrapped across up to 3 rows with side margins so
+  // it is not clipped left/right by the round screen.
   canvas.setTextSize(1);
   canvas.setTextColor(COL_MUTED, COL_BG);
-  String t = g_answer.text;
-  if (t.length() > 42) t = t.substring(0, 41) + "...";
-  canvas.drawString(t.c_str(), CX, CY + 34);
+  drawWrappedCentered(g_answer.text, CX, CY + 26, W - 56, 12, 3);
 
   // Cached marker.
   if (g_answer.cached) {
     canvas.setTextColor(COL_ACCENT, COL_BG);
-    canvas.drawString("cached", CX, CY + 52);
+    canvas.drawString("cached", CX, CY + 64);
   }
   canvas.pushSprite(0, 0);
 }
@@ -238,6 +295,101 @@ static void renderSetupQR() {
   lcd.qrcode("WIFI:S:ai-exams-setup;T:nopass;;", qx, qy, qr, 3);
   lcd.setTextColor(COL_MUTED, COL_BG);
   lcd.drawString("join 'ai-exams-setup'", CX, H - 16);
+}
+
+// Shorten a string with a trailing ellipsis so it fits within maxWidth pixels.
+static String fitText(const String& s, int maxWidth) {
+  if (canvas.textWidth(s.c_str()) <= maxWidth) return s;
+  String t = s;
+  while (t.length() && canvas.textWidth((t + "...").c_str()) > maxWidth) {
+    t.remove(t.length() - 1);
+  }
+  return t + "...";
+}
+
+// A small accent-coloured section heading inside the settings list.
+static void drawSettingSection(const char* title, int cx, int& y) {
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextSize(1);
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.drawString(title, cx, y);
+  y += 16;
+}
+
+// A label/value pair: muted label on one line, bright value below it.
+static void drawSettingRow(const char* label, const String& value, int cx, int& y) {
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextSize(1);
+  canvas.setTextColor(COL_MUTED, COL_BG);
+  canvas.drawString(label, cx, y);
+  y += 11;
+  canvas.setTextColor(COL_TEXT, COL_BG);
+  String v = value.length() ? value : String("-");
+  canvas.drawString(fitText(v, W - 44).c_str(), cx, y);
+  y += 16;
+}
+
+// Render the scrollable settings screen (QR + current settings + status).
+static void renderSettings(int scroll) {
+  canvas.fillScreen(COL_BG);
+
+  const int cx = CX;
+  int y = 16 - scroll;
+
+  // Title.
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextSize(2);
+  canvas.drawString("Settings", cx, y);
+  y += 26;
+
+  // QR to join the on-device setup access point.
+  const int qr = 88;
+  const int qx = cx - qr / 2;
+  canvas.fillRect(qx - 4, y - 4, qr + 8, qr + 8, 0xFFFF);
+  canvas.qrcode("WIFI:S:ai-exams-setup;T:nopass;;", qx, y, qr, 2);
+  y += qr + 8;
+
+  canvas.setTextSize(1);
+  canvas.setTextColor(COL_MUTED, COL_BG);
+  canvas.drawString("Scan to join 'ai-exams-setup'", cx, y); y += 12;
+  canvas.drawString("then open http://192.0.2.10", cx, y); y += 22;
+
+  // Editable settings (changed through the portal above).
+  drawSettingSection("CONFIGURE VIA QR", cx, y);
+  drawSettingRow("WiFi network", WiFi.SSID().length() ? WiFi.SSID() : String("not set"), cx, y);
+  drawSettingRow("Backend URL", g_serverUrl, cx, y);
+  y += 8;
+
+  // Read-only status.
+  drawSettingSection("STATUS", cx, y);
+  drawSettingRow("Connection", WiFi.isConnected() ? String("connected") : String("offline"), cx, y);
+  drawSettingRow("IP address", WiFi.isConnected() ? WiFi.localIP().toString() : String("-"), cx, y);
+  drawSettingRow("Signal", WiFi.isConnected() ? (String(WiFi.RSSI()) + " dBm") : String("-"), cx, y);
+  drawSettingRow("Server link", g_wsConnected ? String("registered") : String("searching..."), cx, y);
+  drawSettingRow("Discovery", g_wsConnected ? String("visible to app") : String("not visible"), cx, y);
+  drawSettingRow("Device name", String(OTA_HOSTNAME), cx, y);
+  drawSettingRow("MAC address", WiFi.macAddress(), cx, y);
+  y += 10;
+
+  // Close hint.
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.drawString("swipe up to close", cx, y); y += 18;
+
+  // Record the absolute content height (independent of the scroll offset).
+  g_settingsContentH = y + scroll;
+
+  // Scrollbar on the right edge when the content overflows the screen.
+  const int maxScroll = (g_settingsContentH > (int)H) ? (g_settingsContentH - (int)H) : 0;
+  if (maxScroll > 0) {
+    const int trackH = (int)H - 20;
+    int barH = trackH * (int)H / g_settingsContentH;
+    if (barH < 12) barH = 12;
+    const int barY = 10 + (trackH - barH) * scroll / maxScroll;
+    canvas.fillRoundRect(W - 6, barY, 3, barH, 1, COL_MUTED);
+  }
+
+  canvas.pushSprite(0, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -350,16 +502,33 @@ static bool touchPressed() {
   return lcd.getTouch(&x, &y);
 }
 
-// Returns true once per fresh press (debounced rising edge).
-static bool touchTapped() {
-  const bool now = touchPressed();
-  bool tapped = false;
-  if (now && !g_wasTouched && (millis() - g_lastTouchAt) > TOUCH_DEBOUNCE_MS) {
-    tapped = true;
-    g_lastTouchAt = millis();
+// Poll the touch panel once and classify the gesture. A press released without
+// travelling is a tap; a downward drag that starts near the top edge is a
+// "swipe down" (used to open the WiFi settings).
+static void pollGestures(bool* tap, bool* swipeDown) {
+  *tap = false;
+  *swipeDown = false;
+
+  int32_t x, y;
+  const bool now = lcd.getTouch(&x, &y);
+  if (now) {
+    if (!g_gestureActive) {
+      g_gestureActive = true;
+      g_gestureSwiped = false;
+      g_gestureStartX = x;
+      g_gestureStartY = y;
+    } else if (!g_gestureSwiped && g_gestureStartY < SWIPE_TOP_ZONE &&
+               (y - g_gestureStartY) > SWIPE_MIN_DISTANCE) {
+      g_gestureSwiped = true;
+      *swipeDown = true;
+    }
+  } else if (g_gestureActive) {
+    g_gestureActive = false;
+    if (!g_gestureSwiped && (millis() - g_lastTouchAt) > TOUCH_DEBOUNCE_MS) {
+      g_lastTouchAt = millis();
+      *tap = true;
+    }
   }
-  g_wasTouched = now;
-  return tapped;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,11 +552,19 @@ static void saveServerUrl(const String& url) {
   g_serverUrl = url;
 }
 
+// Add the backend-URL parameter to the portal exactly once (it is reused).
+static void ensureParamAdded() {
+  if (!g_paramAdded) {
+    wifiManager.addParameter(&g_serverParam);
+    g_paramAdded = true;
+  }
+}
+
 static void runProvisioning(bool forcePortal) {
-  WiFiManagerParameter serverParam(
-      "server", "Backend base URL", g_serverUrlBuf, sizeof(g_serverUrlBuf) - 1);
-  wifiManager.addParameter(&serverParam);
+  g_serverParam.setValue(g_serverUrlBuf, sizeof(g_serverUrlBuf) - 1);
+  ensureParamAdded();
   wifiManager.setSaveParamsCallback(saveParamsCallback);
+  wifiManager.setConfigPortalBlocking(true);
   wifiManager.setConfigPortalTimeout(180);
   wifiManager.setAPCallback([](WiFiManager*) {
     renderSetupQR();
@@ -403,7 +580,7 @@ static void runProvisioning(bool forcePortal) {
   }
 
   if (g_shouldSaveParams || forcePortal) {
-    String url = serverParam.getValue();
+    String url = g_serverParam.getValue();
     url.trim();
     while (url.endsWith("/")) url.remove(url.length() - 1);
     if (url.length()) saveServerUrl(url);
@@ -437,8 +614,9 @@ static bool connectWifiDirect() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  // Lower TX power to avoid brownout resets on weakly-powered boards.
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  // Use full TX power for a stable link; low power caused the WebSocket to keep
+  // dropping and reconnecting (connect/close cycling) on a weaker signal.
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
   Serial.printf("[wifi] connecting to '%s' ...\n", WIFI_SSID);
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
@@ -462,6 +640,76 @@ static bool connectWifiDirect() {
 #else
   return false;
 #endif
+}
+
+// Open the scrollable settings screen on demand (swipe down from the top).
+// The config portal runs non-blocking so the screen stays interactive.
+static void openWifiSettings() {
+  g_settingsScroll = 0;
+  g_settingsContentH = 0;
+  g_settingsDragging = false;
+  g_gestureActive = false;
+  g_gestureSwiped = false;
+
+  g_serverParam.setValue(g_serverUrlBuf, sizeof(g_serverUrlBuf) - 1);
+  ensureParamAdded();
+  wifiManager.setSaveParamsCallback(saveParamsCallback);
+  wifiManager.setConfigPortalBlocking(false);
+  wifiManager.setConfigPortalTimeout(0);
+  wifiManager.setAPCallback([](WiFiManager*) {});
+  wifiManager.startConfigPortal("ai-exams-setup");
+
+  g_state = UiState::Settings;
+}
+
+// Close the settings screen (swipe up): persist changes, stop the portal, and
+// return to normal operation.
+static void closeWifiSettings() {
+  if (g_shouldSaveParams) {
+    String url = g_serverParam.getValue();
+    url.trim();
+    while (url.endsWith("/")) url.remove(url.length() - 1);
+    if (url.length()) saveServerUrl(url);
+    g_shouldSaveParams = false;
+  }
+  wifiManager.stopConfigPortal();
+  WiFi.mode(WIFI_STA);
+  setupWebSocket();
+  g_state = UiState::Connecting;
+}
+
+// Drive the settings screen each loop: service the portal, handle drag-to-scroll
+// and the swipe-up-to-close gesture, then render.
+static void handleSettings() {
+  wifiManager.process();
+
+  int32_t x, y;
+  const bool now = lcd.getTouch(&x, &y);
+  if (now) {
+    if (!g_settingsDragging) {
+      g_settingsDragging = true;
+      g_settingsDragStartY = y;
+      g_settingsLastY = y;
+    } else {
+      g_settingsScroll -= (y - g_settingsLastY);  // drag to scroll the list
+      g_settingsLastY = y;
+    }
+  } else if (g_settingsDragging) {
+    g_settingsDragging = false;
+    // Swipe up from the bottom edge closes the settings.
+    if (g_settingsDragStartY > (int)H - 60 &&
+        (g_settingsDragStartY - g_settingsLastY) > 80) {
+      closeWifiSettings();
+      return;
+    }
+  }
+
+  // Clamp the scroll offset to the content bounds.
+  const int maxScroll = (g_settingsContentH > (int)H) ? (g_settingsContentH - (int)H) : 0;
+  if (g_settingsScroll < 0) g_settingsScroll = 0;
+  if (g_settingsScroll > maxScroll) g_settingsScroll = maxScroll;
+
+  renderSettings(g_settingsScroll);
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +768,13 @@ void setup() {
 }
 
 void loop() {
+  // The settings screen runs its own non-blocking portal + touch handling.
+  if (g_state == UiState::Settings) {
+    handleSettings();
+    delay(10);
+    return;
+  }
+
   // Keep WiFi alive.
   if (WiFi.status() != WL_CONNECTED) {
     g_state = UiState::Connecting;
@@ -533,7 +788,13 @@ void loop() {
   ArduinoOTA.handle();
   g_ws.loop();
 
-  const bool tapped = touchTapped();
+  bool tapped = false;
+  bool swipeDown = false;
+  pollGestures(&tapped, &swipeDown);
+  if (swipeDown) {
+    openWifiSettings();
+    return;
+  }
 
   switch (g_state) {
     case UiState::Connecting:
