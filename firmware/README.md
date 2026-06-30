@@ -110,7 +110,8 @@ IDE sketch in [arduino/ai_exams_display/](arduino/ai_exams_display/) (same code)
    **WiFiManager** (by tzapu), and **WebSockets** (by Markus Sattler).
 4. Open `arduino/ai_exams_display/ai_exams_display.ino`.
 5. Tools → Board: **ESP32S3 Dev Module**, then set:
-   - **USB CDC On Boot:** Enabled
+   - **USB CDC On Boot:** Disabled  (this board's USB-C uses a CH343 UART
+     bridge, not native USB — leave this **off** or you get no serial logs)
    - **CPU Frequency:** 240MHz
    - **Flash Mode:** QIO 80MHz
    - **Flash Size:** 16MB (128Mb)
