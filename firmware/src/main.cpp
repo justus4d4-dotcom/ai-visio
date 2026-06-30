@@ -33,6 +33,15 @@
 #define OTA_PASSWORD "change-this-ota-pass"
 #endif
 
+// Optional built-in WiFi credentials (auto-connect without the setup portal) and a
+// default backend URL. Provide them in wifi_secrets.h (see wifi_secrets.example.h).
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#endif
+#ifndef DEFAULT_BACKEND_URL
+#define DEFAULT_BACKEND_URL "http://192.0.2.10:8000"
+#endif
+
 // ---------------------------------------------------------------------------
 // Globals
 // ---------------------------------------------------------------------------
@@ -212,6 +221,22 @@ static void renderOtaProgress(int pct) {
   canvas.pushSprite(0, 0);
 }
 
+// Show a WiFi QR for the device's setup AP so a phone can scan to join it.
+static void renderSetupQR() {
+  lcd.fillScreen(COL_BG);
+  lcd.setTextDatum(textdatum_t::middle_center);
+  lcd.setTextColor(COL_TEXT, COL_BG);
+  lcd.setTextSize(1);
+  lcd.drawString("Scan to set up", CX, 22);
+  const int qr = 150;
+  const int qx = CX - qr / 2;
+  const int qy = CY - qr / 2 + 6;
+  lcd.fillRect(qx - 6, qy - 6, qr + 12, qr + 12, 0xFFFF);  // white quiet zone
+  lcd.qrcode("WIFI:S:ai-exams-setup;T:nopass;;", qx, qy, qr, 3);
+  lcd.setTextColor(COL_MUTED, COL_BG);
+  lcd.drawString("join 'ai-exams-setup'", CX, H - 16);
+}
+
 // ---------------------------------------------------------------------------
 // Networking
 // ---------------------------------------------------------------------------
@@ -352,7 +377,7 @@ static void runProvisioning(bool forcePortal) {
   wifiManager.setSaveParamsCallback(saveParamsCallback);
   wifiManager.setConfigPortalTimeout(180);
   wifiManager.setAPCallback([](WiFiManager*) {
-    renderConnecting("setup: join WiFi 'ai-exams-setup'");
+    renderSetupQR();
   });
 
   bool connected;
@@ -391,6 +416,22 @@ static void setupOTA() {
   ArduinoOTA.begin();
 }
 
+// Connect using the built-in WiFi credentials from wifi_secrets.h, if provided.
+static bool connectWifiDirect() {
+#ifdef WIFI_SSID
+  renderConnecting("connecting WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  const uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    delay(250);
+  }
+  return WiFi.status() == WL_CONNECTED;
+#else
+  return false;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // Arduino entry points
 // ---------------------------------------------------------------------------
@@ -407,14 +448,27 @@ void setup() {
 
   loadServerUrl();
 
-  // Hold a touch during boot to wipe settings and re-provision.
+  // Hold a touch during boot to force the setup portal (and wipe saved WiFi).
   delay(150);
-  const bool forcePortal = touchPressed() || g_serverUrl.isEmpty();
-  if (forcePortal && touchPressed()) {
+  const bool forcePortal = touchPressed();
+  if (forcePortal) {
     wifiManager.resetSettings();
   }
 
-  runProvisioning(forcePortal);
+  // Fast path: try the built-in WiFi credentials first (no portal needed).
+  bool connected = false;
+  if (!forcePortal) {
+    connected = connectWifiDirect();
+  }
+  // Fall back to the captive portal, which shows a QR to join the device.
+  if (!connected) {
+    runProvisioning(true);
+  }
+
+  // Ensure a backend URL exists even when the portal was skipped.
+  if (g_serverUrl.isEmpty()) {
+    saveServerUrl(DEFAULT_BACKEND_URL);
+  }
 
   setupOTA();
 
