@@ -433,13 +433,26 @@ static void setupOTA() {
 static bool connectWifiDirect() {
 #ifdef WIFI_SSID
   renderConnecting("connecting WiFi...");
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  // Lower TX power to avoid brownout resets on weakly-powered boards.
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  Serial.printf("[wifi] connecting to '%s' ...\n", WIFI_SSID);
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(250);
+    Serial.print('.');
   }
-  return WiFi.status() == WL_CONNECTED;
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("[wifi] connected, IP=");
+    Serial.println(WiFi.localIP());
+    return true;
+  }
+  Serial.printf("[wifi] FAILED, status=%d\n", (int)WiFi.status());
+  return false;
 #else
   return false;
 #endif
@@ -450,6 +463,8 @@ static bool connectWifiDirect() {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
+  delay(200);
+  Serial.println("\n[boot] AI Image Interpreter display starting");
 
   lcd.init();
   lcd.setRotation(0);
