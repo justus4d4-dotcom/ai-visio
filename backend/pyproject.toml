@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-exams-backend"
+version = "0.1.0"
+description = "FastAPI backend for ai-exams: screen OCR + BYOK LLM + ESP32 push"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
+    "python-jose[cryptography]>=3.3",
+    "cryptography>=43",
+    "pillow>=10.4",
+    "httpx>=0.27",
+    "google-genai>=1.0",
+    "truststore>=0.9",
+    "python-multipart>=0.0.12",
+    "websockets>=13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7",
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
