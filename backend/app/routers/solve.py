@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from collections import OrderedDict
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from google.genai import errors as genai_errors
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
-from app import gemini
+from app import gemini, history_store
+from app.database import get_db
 from app.gemini import friendly_provider_error
 from app.schemas import GeminiConfig, SolveResult
 
@@ -47,6 +50,7 @@ def _cache_put(key: str, value: SolveResult) -> None:
 async def solve(
     image: UploadFile = File(...),
     provider: str = Form(...),
+    db: Session = Depends(get_db),
 ) -> SolveResult:
     try:
         cfg = GeminiConfig(**json.loads(provider))
@@ -75,4 +79,11 @@ async def solve(
         raise HTTPException(status_code=422, detail=str(exc))
 
     _cache_put(digest, result)
+
+    # Persist to history (best-effort: never fail the solve if the DB is unavailable).
+    try:
+        history_store.save_answer(db, data, result, digest)
+    except Exception:  # noqa: BLE001
+        logging.exception("Failed to persist answer to history")
+
     return result

@@ -17,3 +17,6 @@ frontend/.env.local
 backend/*.egg-info/
 backend/build/
 backend/dist/
+
+# Large archives / vendor downloads
+*.zip

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -33,3 +34,18 @@ class SolveResult(BaseModel):
     tokens_used: int | None = None
     elapsed_ms: int | None = None
     cached: bool = False  # True when returned from the dedup cache (no API call made)
+
+
+class HistoryItem(BaseModel):
+    """A persisted question/answer record (metadata only; image fetched separately)."""
+
+    id: str
+    question_text: str
+    question_type: str
+    answer_letters: list[str] = []
+    answer_text: str | None = None
+    confidence: float | None = None
+    provider_label: str | None = None
+    tokens_used: int | None = None
+    has_image: bool = False
+    created_at: dt.datetime

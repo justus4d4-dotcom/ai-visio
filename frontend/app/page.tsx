@@ -233,12 +233,20 @@ export default function Home() {
           <h1 className="text-2xl font-semibold">AI Image Interpreter</h1>
           <p className="text-sm text-neutral-400">Vision interpreter — Gemini</p>
         </div>
-        <button
-          onClick={() => setShowSettings((s) => !s)}
-          className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-        >
-          Settings
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/history"
+            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+          >
+            History
+          </a>
+          <button
+            onClick={() => setShowSettings((s) => !s)}
+            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+          >
+            Settings
+          </button>
+        </div>
       </header>
 
       {showSettings && (

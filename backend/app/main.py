@@ -19,6 +19,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import engine
 from app.routers import providers, remote, solve
+from app.routers import history
 
 app = FastAPI(title="AI Image Interpreter backend", version="0.1.0")
 
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(solve.router)
 app.include_router(providers.router)
 app.include_router(remote.router)
+app.include_router(history.router)
 
 
 @app.get("/health")
