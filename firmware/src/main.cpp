@@ -611,9 +611,8 @@ static bool connectWifiDirect() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  // Use full TX power for a stable link; low power caused the WebSocket to keep
-  // dropping and reconnecting (connect/close cycling) on a weaker signal.
-  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  // Lower TX power to avoid brownout.
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
   Serial.printf("[wifi] connecting to '%s' ...\n", WIFI_SSID);
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
