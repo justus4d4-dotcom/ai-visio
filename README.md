@@ -21,6 +21,7 @@ MacBook browser ──getDisplayMedia──▶ Next.js UI ──frames──▶ 
 | ----------- | ----------------------------------------------------------------------- |
 | `backend/`  | FastAPI app: OCR, BYOK LLM client, auth, WebSocket hub, REST API        |
 | `frontend/` | Next.js 16 / React 19 UI: screen capture, history, device + admin pages |
+| `agent/`    | Native macOS screen-capture agent (headless alternative to the Chrome tab) |
 | `firmware/` | PlatformIO ESP32-S3 + LVGL firmware for the round display               |
 | `deploy/`   | systemd units + setup notes for running inside the LXC container        |
 

@@ -98,7 +98,7 @@ powering on** — this wipes WiFi + server settings and reopens the portal.
 ## Alternative: deploy with the Arduino IDE
 
 If PlatformIO/esptool can't flash over the CH343 USB-UART bridge, use the Arduino
-IDE sketch in [arduino/ai_exams_display/](arduino/ai_exams_display/) (same code).
+IDE sketch in [arduino/ai_visio_display/](arduino/ai_visio_display/) (same code).
 
 1. Install the **CH34x Mac driver** (required on macOS):
    https://files.waveshare.com/wiki/common/CH34XSER_MAC.7z — then reboot.
@@ -108,7 +108,7 @@ IDE sketch in [arduino/ai_exams_display/](arduino/ai_exams_display/) (same code)
    recommends **2.0.12** for this board).
 3. Library Manager → install **LovyanGFX**, **ArduinoJson** (v7),
    **WiFiManager** (by tzapu), and **WebSockets** (by Markus Sattler).
-4. Open `arduino/ai_exams_display/ai_exams_display.ino`.
+4. Open `arduino/ai_visio_display/ai_visio_display.ino`.
 5. Tools → Board: **ESP32S3 Dev Module**, then set:
    - **USB CDC On Boot:** Disabled  (this board's USB-C uses a CH343 UART
      bridge, not native USB — leave this **off** or you get no serial logs)

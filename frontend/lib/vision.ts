@@ -6,15 +6,14 @@
 
 const SIZE = 8;
 
-/** Compute a 64-bit average hash of a video frame, returned as a 16-char hex string. */
-export function aHashFromVideo(video: HTMLVideoElement): string | null {
-  if (!video.videoWidth) return null;
+/** Compute a 64-bit average hash of any drawable image source, as a 16-char hex string. */
+function aHashFromSource(source: CanvasImageSource): string | null {
   const canvas = document.createElement("canvas");
   canvas.width = SIZE;
   canvas.height = SIZE;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
-  ctx.drawImage(video, 0, 0, SIZE, SIZE);
+  ctx.drawImage(source, 0, 0, SIZE, SIZE);
   const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
 
   const gray: number[] = [];
@@ -35,6 +34,29 @@ export function aHashFromVideo(video: HTMLVideoElement): string | null {
     hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
   }
   return hex;
+}
+
+/** Compute a 64-bit average hash of a video frame, returned as a 16-char hex string. */
+export function aHashFromVideo(video: HTMLVideoElement): string | null {
+  if (!video.videoWidth) return null;
+  return aHashFromSource(video);
+}
+
+/**
+ * Compute a 64-bit average hash of an image blob (e.g. a frame pushed by the native
+ * agent). Async because it decodes the blob first. Returns null if decoding fails.
+ */
+export async function aHashFromBlob(blob: Blob): Promise<string | null> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      return aHashFromSource(bitmap);
+    } finally {
+      bitmap.close();
+    }
+  } catch {
+    return null;
+  }
 }
 
 /** Hamming distance between two 16-char hex hashes (0..64). */

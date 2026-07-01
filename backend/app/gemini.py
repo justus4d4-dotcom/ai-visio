@@ -26,24 +26,44 @@ from app import pricing
 _RETRY_STATUSES = {429, 503}
 _RETRY_BACKOFF = (0.4, 0.9)  # seconds; kept short to respect the latency budget
 
+# Returned as answer_text when Gemini produced no parseable answer for a frame.
+NO_ANSWER_TEXT = "No answer could be read from this image."
+
+# Models ordered from cheapest/fastest to most capable. When a frame is unreadable we
+# escalate up this ladder before giving up.
+MODEL_LADDER = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro")
+# Max number of models to try for a single solve (the configured model + fallbacks).
+MAX_SOLVE_ATTEMPTS = 3
+
 # Max edge (px) we send to Gemini. Combined with media_resolution=LOW this keeps the
 # image to a couple of tiles for fast, cheap inference while staying readable.
 MAX_EDGE = 640
 
-PROMPT = """You are an expert exam solver. The image is a screenshot of a \
-multiple-choice question. Read the question and its options and choose the correct \
-answer(s).
+PROMPT = """You are an expert exam solver. The image is a screenshot that may contain a \
+multiple-choice question. Read ONLY what is actually visible in the image and choose the \
+correct answer(s).
+
+CRITICAL — do not hallucinate. Only answer when the full question is readable in the \
+image. If any of the following is true, return question_type="unknown", answer_letters=[], \
+answer_text="" and confidence=0.0:
+- the question text is missing, cut off, or not visible,
+- the answer options are missing, partially hidden, or unreadable,
+- the image is blurry, blank, or shows something that is not a question,
+- you would have to guess or invent the question or its options to answer.
+Never fabricate a question, options, or an answer that is not clearly shown in the image.
 
 question_type values:
 - "single": exactly one correct option (A/B/C/D/...)
 - "truefalse": a true/false question
 - "multi": more than one correct option
 - "draganddrop": ordering/matching question; put the correct order/matches in answer_text
-- "unknown": the image has no usable question
+- "unknown": the image has no usable/complete question (see the rule above)
 
-Return answer_letters as the letters of the correct option(s) (e.g. ["A"] or ["A","C"]); \
-empty if not applicable. Keep answer_text under 12 words. confidence is 0..1. Answer \
-fast; do not explain your reasoning."""
+Set question_text to the exact question you can read in the image (empty if none is \
+visible). Return answer_letters as the letters of the correct option(s) (e.g. ["A"] or \
+["A","C"]); empty if not applicable or unknown. Keep answer_text under 12 words. \
+confidence is 0..1 and must reflect how clearly the question and options are visible. \
+Answer fast; do not explain your reasoning."""
 
 
 class _GeminiAnswer(BaseModel):
@@ -74,6 +94,31 @@ def friendly_provider_error(exc: Exception) -> str:
             "check your quota."
         )
     return text[:300]
+
+
+def is_unreadable(result: SolveResult) -> bool:
+    """True when Gemini could not read an answer from the image.
+
+    Such results are worth retrying with a more capable model and are not saved to
+    history.
+    """
+    return result.answer_text == NO_ANSWER_TEXT or (
+        result.question_type == "unknown" and not result.answer_letters
+    )
+
+
+def fallback_models(configured: str) -> list[str]:
+    """Ordered models to try for one solve: the configured model first, then escalate to
+    progressively more capable models. Deduplicated and capped at MAX_SOLVE_ATTEMPTS."""
+    models = [configured]
+    if configured in MODEL_LADDER:
+        extras = MODEL_LADDER[MODEL_LADDER.index(configured) + 1 :]
+    else:
+        extras = MODEL_LADDER
+    for m in extras:
+        if m not in models:
+            models.append(m)
+    return models[:MAX_SOLVE_ATTEMPTS]
 
 
 def _downscale_png(image_bytes: bytes) -> tuple[bytes, str]:
@@ -155,7 +200,7 @@ def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
             question_text="",
             question_type="unknown",
             answer_letters=[],
-            answer_text="No answer could be read from this image.",
+            answer_text=NO_ANSWER_TEXT,
             confidence=0.0,
             reasoning=None,
             model=cfg.model,

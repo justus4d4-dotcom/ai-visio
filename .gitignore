@@ -1,5 +1,7 @@
 # Python / backend
 backend/.venv/
+agent/.venv/
+.venv/
 __pycache__/
 *.pyc
 backend/.env

@@ -141,7 +141,7 @@ static void renderConnecting(const char* line) {
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(COL_ACCENT, COL_BG);
   canvas.setTextSize(2);
-  canvas.drawString("ai-exams", CX, CY - 18);
+  canvas.drawString("ai-visio+", CX, CY - 18);
   canvas.setTextColor(COL_MUTED, COL_BG);
   canvas.setTextSize(1);
   canvas.drawString(line, CX, CY + 14);

@@ -14,7 +14,7 @@ Create an unprivileged Debian 12 / Ubuntu 24.04 container (Proxmox example):
 ```bash
 # On the Proxmox host
 pct create 110 local:vztmpl/debian-12-standard_*.tar.zst \
-  --hostname ai-exams --cores 2 --memory 2048 --swap 512 \
+  --hostname ai-visio --cores 2 --memory 2048 --swap 512 \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 1 --features nesting=1
 pct start 110
 pct enter 110
@@ -35,10 +35,10 @@ npm install -g pnpm
 ## 2. Application user + code
 
 ```bash
-useradd --system --create-home --shell /usr/sbin/nologin aiexams
-mkdir -p /opt/ai-exams && chown aiexams:aiexams /opt/ai-exams
-git clone https://github.com/justus4d4-dotcom/ai-visio /opt/ai-exams
-chown -R aiexams:aiexams /opt/ai-exams
+useradd --system --create-home --shell /usr/sbin/nologin aivisio
+mkdir -p /opt/ai-visio && chown aivisio:aivisio /opt/ai-visio
+git clone https://github.com/justus4d4-dotcom/ai-visio /opt/ai-visio
+chown -R aivisio:aivisio /opt/ai-visio
 ```
 
 ## 3. PostgreSQL
@@ -53,45 +53,45 @@ SQL
 ## 4. Backend
 
 ```bash
-cd /opt/ai-exams/backend
-sudo -u aiexams python3.12 -m venv .venv
-sudo -u aiexams .venv/bin/pip install -e .
+cd /opt/ai-visio/backend
+sudo -u aivisio python3.12 -m venv .venv
+sudo -u aivisio .venv/bin/pip install -e .
 
 # Secrets file (mode 0600). Generate strong keys:
 #   python -c "import secrets; print(secrets.token_urlsafe(48))"   # AUTH_SECRET
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # ENCRYPTION_KEY
-sudo -u aiexams tee /opt/ai-exams/backend/.env >/dev/null <<'ENV'
+sudo -u aivisio tee /opt/ai-visio/backend/.env >/dev/null <<'ENV'
 DATABASE_URL=postgresql+psycopg://aiexams:change-this-db-pass@localhost:5432/aiexams
 AUTH_SECRET=change-me
 ENCRYPTION_KEY=change-me
-FRONTEND_ORIGINS=http://ai-exams.local:3000
+FRONTEND_ORIGINS=http://ai-visio.local:3000
 ENV
-chmod 600 /opt/ai-exams/backend/.env
+chmod 600 /opt/ai-visio/backend/.env
 
 # Run migrations
-sudo -u aiexams .venv/bin/alembic upgrade head
+sudo -u aivisio .venv/bin/alembic upgrade head
 ```
 
 ## 5. Frontend
 
 ```bash
-cd /opt/ai-exams/frontend
-sudo -u aiexams pnpm install
+cd /opt/ai-visio/frontend
+sudo -u aivisio pnpm install
 # NEXT_PUBLIC_API_URL is baked in at build time — point it at the backend.
-echo 'NEXT_PUBLIC_API_URL=http://ai-exams.local:8000' | sudo -u aiexams tee .env.production
-sudo -u aiexams pnpm build
+echo 'NEXT_PUBLIC_API_URL=http://ai-visio.local:8000' | sudo -u aivisio tee .env.production
+sudo -u aivisio pnpm build
 ```
 
 ## 6. systemd units
 
 ```bash
-cp /opt/ai-exams/deploy/ai-exams-backend.service  /etc/systemd/system/
-cp /opt/ai-exams/deploy/ai-exams-frontend.service /etc/systemd/system/
+cp /opt/ai-visio/deploy/ai-visio-backend.service  /etc/systemd/system/
+cp /opt/ai-visio/deploy/ai-visio-frontend.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now ai-exams-backend ai-exams-frontend
+systemctl enable --now ai-visio-backend ai-visio-frontend
 
-systemctl status ai-exams-backend ai-exams-frontend
-journalctl -u ai-exams-backend -f
+systemctl status ai-visio-backend ai-visio-frontend
+journalctl -u ai-visio-backend -f
 ```
 
 The backend listens on `:8000`, the frontend on `:3000`. Open
@@ -101,10 +101,10 @@ and set the ESP32 device IP under **Devices**.
 ## 7. Upgrades
 
 ```bash
-cd /opt/ai-exams && sudo -u aiexams git pull
-cd backend  && sudo -u aiexams .venv/bin/pip install -e . && sudo -u aiexams .venv/bin/alembic upgrade head
-cd ../frontend && sudo -u aiexams pnpm install && sudo -u aiexams pnpm build
-systemctl restart ai-exams-backend ai-exams-frontend
+cd /opt/ai-visio && sudo -u aivisio git pull
+cd backend  && sudo -u aivisio .venv/bin/pip install -e . && sudo -u aivisio .venv/bin/alembic upgrade head
+cd ../frontend && sudo -u aivisio pnpm install && sudo -u aivisio pnpm build
+systemctl restart ai-visio-backend ai-visio-frontend
 ```
 
 ## Monitoring

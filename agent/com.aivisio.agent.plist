@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template to run the ai-visio+ native screen agent hidden in the background,
+  automatically at login and restarted if it ever exits.
+
+  1. Edit the two absolute paths below (PYTHON and the script path) and the config path.
+  2. Copy to:  ~/Library/LaunchAgents/com.aivisio.agent.plist
+  3. Load it:  launchctl load -w ~/Library/LaunchAgents/com.aivisio.agent.plist
+     Stop it:  launchctl unload -w ~/Library/LaunchAgents/com.aivisio.agent.plist
+
+  The first run will prompt for Screen Recording permission (System Settings ->
+  Privacy & Security -> Screen Recording) for whichever app runs Python.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.aivisio.agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Absolute path to the Python that has mss/pillow/requests installed. -->
+        <string>/Users/CHANGE_ME/Code/ai-visio/agent/.venv/bin/python</string>
+        <string>/Users/CHANGE_ME/Code/ai-visio/agent/ai_visio_agent.py</string>
+        <string>--config</string>
+        <string>/Users/CHANGE_ME/.config/ai-visio-agent/config.toml</string>
+    </array>
+
+    <!-- Start at login and keep it running. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Logs (optional). -->
+    <key>StandardOutPath</key>
+    <string>/tmp/aivisio-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/aivisio-agent.err</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

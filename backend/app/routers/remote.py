@@ -19,7 +19,7 @@ import datetime as dt
 import json
 import uuid
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from app.schemas import SolveResult
@@ -34,6 +34,39 @@ _state: dict[str, object] = {
     "answer_id": None,
     "answer": None,
 }
+
+# Which capture source currently answers triggers:
+#   "browser" — the Next.js tab holding a getDisplayMedia share (default)
+#   "agent"   — the native macOS Python agent (streams the whole screen)
+# Only one source consumes triggers at a time so a frame is never solved twice.
+#
+# In "agent" mode the agent only *records* the screen and pushes frames here; the
+# browser (which holds the BYOK Gemini key) solves the latest frame on a trigger. So
+# the agent never needs the API key.
+_capture: dict[str, object] = {
+    "source": "browser",
+    "agent_last_seen": None,  # datetime | None
+    "agent_host": None,       # str | None
+    "frame": None,            # bytes | None — latest screen frame from the agent
+    "frame_at": None,         # datetime | None
+    "frame_ct": "image/jpeg",  # content type of the stored frame
+}
+AGENT_ONLINE_WINDOW = dt.timedelta(seconds=6)
+FRAME_STALE_WINDOW = dt.timedelta(seconds=10)
+
+
+def _agent_online() -> bool:
+    last = _capture["agent_last_seen"]
+    if not isinstance(last, dt.datetime):
+        return False
+    return (dt.datetime.now(dt.timezone.utc) - last) < AGENT_ONLINE_WINDOW
+
+
+def _frame_fresh() -> bool:
+    at = _capture["frame_at"]
+    if not isinstance(at, dt.datetime) or not _capture["frame"]:
+        return False
+    return (dt.datetime.now(dt.timezone.utc) - at) < FRAME_STALE_WINDOW
 
 
 class DeviceHub:
@@ -94,6 +127,84 @@ class RemoteState(BaseModel):
     status: str
     answer_id: str | None = None
     answer: SolveResult | None = None
+
+
+class SourceUpdate(BaseModel):
+    source: str  # "browser" | "agent"
+
+
+class SourceState(BaseModel):
+    source: str
+    agent_online: bool
+    agent_host: str | None = None
+    frame_ready: bool = False
+
+
+class AgentHeartbeat(BaseModel):
+    host: str | None = None
+
+
+class HeartbeatResponse(BaseModel):
+    source: str
+    active: bool  # True when the agent is the selected capture source
+
+
+@router.get("/source", response_model=SourceState)
+def get_source() -> SourceState:
+    """Current capture source + whether a native agent is alive (for the web UI)."""
+    return SourceState(
+        source=str(_capture["source"]),
+        agent_online=_agent_online(),
+        agent_host=_capture["agent_host"],  # type: ignore[arg-type]
+        frame_ready=_frame_fresh(),
+    )
+
+
+@router.post("/source", response_model=SourceState)
+def set_source(update: SourceUpdate) -> SourceState:
+    """Choose which capture source answers triggers: browser tab or native agent."""
+    if update.source not in ("browser", "agent"):
+        raise HTTPException(status_code=422, detail="source must be 'browser' or 'agent'")
+    _capture["source"] = update.source
+    return get_source()
+
+
+@router.post("/agent/heartbeat", response_model=HeartbeatResponse)
+def agent_heartbeat(hb: AgentHeartbeat) -> HeartbeatResponse:
+    """The native agent calls this every few seconds to report it is alive."""
+    _capture["agent_last_seen"] = dt.datetime.now(dt.timezone.utc)
+    if hb.host:
+        _capture["agent_host"] = hb.host
+    return HeartbeatResponse(
+        source=str(_capture["source"]),
+        active=_capture["source"] == "agent",
+    )
+
+
+@router.post("/frame")
+async def upload_frame(image: UploadFile = File(...)) -> dict[str, object]:
+    """The native agent pushes the latest screen frame here (no API key needed).
+
+    The browser fetches this frame with GET /frame and does the Gemini solve using its
+    own BYOK key, so the agent only ever *records* the screen.
+    """
+    data = await image.read()
+    _capture["frame"] = data
+    _capture["frame_ct"] = image.content_type or "image/jpeg"
+    _capture["frame_at"] = dt.datetime.now(dt.timezone.utc)
+    _capture["agent_last_seen"] = dt.datetime.now(dt.timezone.utc)
+    return {"ok": True, "bytes": len(data)}
+
+
+@router.get("/frame")
+def get_frame() -> Response:
+    """Return the latest frame pushed by the agent (used by the browser to solve)."""
+    if not _frame_fresh():
+        raise HTTPException(status_code=404, detail="no fresh agent frame")
+    return Response(
+        content=bytes(_capture["frame"]),  # type: ignore[arg-type]
+        media_type=str(_capture["frame_ct"]),
+    )
 
 
 @router.post("/trigger", response_model=TriggerResponse)

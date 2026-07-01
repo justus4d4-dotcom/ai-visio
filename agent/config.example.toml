@@ -1,0 +1,25 @@
+# ai-visio+ native screen agent — configuration
+#
+# Copy to ~/.config/ai-visio-agent/config.toml (or pass --config /path/to.toml).
+# CLI flags and AIVISIO_* env vars override anything set here.
+#
+# The agent only RECORDS the screen and streams it to the backend. It does NOT call
+# Gemini and needs NO API key — the web app (which holds your key) does the solving.
+
+# Backend base URL (no trailing slash). Use your Mac's LAN IP if the ESP32/other
+# devices need to reach the same backend, e.g. "http://192.0.2.10:8000".
+backend_url = "http://localhost:8000"
+
+# Which screen to capture (mss monitor index): 0 = all screens stitched together,
+# 1 = primary display, 2 = second display, ...
+monitor = 1
+
+# Frames per second to stream while the web app has "Native app" selected.
+fps = 1.0
+
+# Auto-detect: when true, the agent samples the screen every `interval` seconds and
+# fires a solve trigger (as an ESP32 touch would) whenever the screen content changes
+# and settles. The web app then interprets the latest frame with your Gemini key.
+auto = false
+interval = 3.0
+

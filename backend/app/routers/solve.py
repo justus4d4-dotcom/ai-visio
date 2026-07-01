@@ -76,27 +76,35 @@ async def solve(
             logging.exception("Failed to record cached usage event")
         return hit
 
+    # If the frame is unreadable, retry with progressively more capable models (up to
+    # MAX_SOLVE_ATTEMPTS). Each attempt is a real API call, so it is metered, but an
+    # unreadable result is never cached or saved to history.
+    result: SolveResult | None = None
+    started = time.perf_counter()
     try:
-        started = time.perf_counter()
-        result = gemini.solve_image(data, cfg)
-        result.elapsed_ms = int((time.perf_counter() - started) * 1000)
+        for model in gemini.fallback_models(cfg.model):
+            result = gemini.solve_image(data, cfg.model_copy(update={"model": model}))
+            # Record every metered API call for the monitoring dashboard (best-effort).
+            try:
+                usage_store.record_usage(db, result)
+            except Exception:  # noqa: BLE001
+                logging.exception("Failed to record usage event")
+            if not gemini.is_unreadable(result):
+                break
     except genai_errors.APIError as exc:
         raise HTTPException(status_code=502, detail=friendly_provider_error(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    _cache_put(digest, result)
+    result.elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-    # Record the metered API call for the monitoring dashboard (best-effort).
-    try:
-        usage_store.record_usage(db, result)
-    except Exception:  # noqa: BLE001
-        logging.exception("Failed to record usage event")
-
-    # Persist to history (best-effort: never fail the solve if the DB is unavailable).
-    try:
-        history_store.save_answer(db, data, result, digest)
-    except Exception:  # noqa: BLE001
-        logging.exception("Failed to persist answer to history")
+    # Only cache + persist readable answers. An unreadable frame is not cached (so a
+    # later retry can still succeed) and is never saved to history.
+    if not gemini.is_unreadable(result):
+        _cache_put(digest, result)
+        try:
+            history_store.save_answer(db, data, result, digest)
+        except Exception:  # noqa: BLE001
+            logging.exception("Failed to persist answer to history")
 
     return result
