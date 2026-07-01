@@ -46,6 +46,13 @@ PRIMARY_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
 gen_urlsafe() { python3 -c "import secrets; print(secrets.token_urlsafe(48))"; }
+# On a re-run, reuse the DB password already stored in .env so the role ALTER
+# below stays in sync with it (otherwise psycopg fails with "password
+# authentication failed"). token_urlsafe never contains ':' or '@', so parsing
+# the DATABASE_URL is safe.
+if [[ -z "$DB_PASSWORD" && -f "$APP_DIR/backend/.env" ]]; then
+  DB_PASSWORD="$(sed -n 's|^DATABASE_URL=postgresql+psycopg://[^:]*:\(.*\)@localhost.*|\1|p' "$APP_DIR/backend/.env")"
+fi
 [[ -n "$DB_PASSWORD" ]] || DB_PASSWORD="$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")"
 
 # ── System packages ───────────────────────────────────────────────────────────
@@ -98,6 +105,8 @@ fi
 
 if [[ -d "$APP_DIR/.git" ]]; then
   log "Updating existing checkout in $APP_DIR…"
+  # The tree is owned by $APP_USER but we run git as root here — tell git it's safe.
+  git config --global --add safe.directory "$APP_DIR"
   git -C "$APP_DIR" fetch --depth 1 "$FETCH_URL" "$REPO_REF"
   git -C "$APP_DIR" checkout -f "$REPO_REF" 2>/dev/null || true
   git -C "$APP_DIR" reset --hard FETCH_HEAD
@@ -127,9 +136,13 @@ END
 \$\$;
 SQL
 
-# Create the database if it doesn't already exist.
+# Create the database if it doesn't already exist. Force UTF8 via template0 —
+# on an LXC with a broken/C locale the cluster defaults to SQL_ASCII, which makes
+# psycopg3 return text as bytes and breaks SQLAlchemy. template0 lets us pick UTF8
+# even when the cluster's default locale is C.
 if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
-  sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
+  sudo -u postgres createdb -O "$DB_USER" \
+    --encoding=UTF8 --template=template0 --lc-collate=C --lc-ctype=C "$DB_NAME"
 fi
 
 DATABASE_URL="postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
@@ -154,6 +167,7 @@ AUTH_SECRET=${AUTH_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 BOOTSTRAP_ADMINS=${BOOTSTRAP_ADMINS}
 FRONTEND_ORIGINS=${FRONTEND_ORIGINS}
+GITHUB_TOKEN=${GITHUB_TOKEN}
 ENV
   chown "$APP_USER:$APP_USER" "$ENV_FILE"
   chmod 0600 "$ENV_FILE"
@@ -179,7 +193,18 @@ systemctl daemon-reload
 systemctl enable --now ai-visio-backend ai-visio-frontend
 systemctl restart ai-visio-backend ai-visio-frontend
 
-log "Deployment complete."
+# ── In-app self-update ────────────────────────────────────────────────────────
+# Allow the unprivileged backend to run ONLY the update script as root, so the
+# "Update" button in Settings can pull a new release and restart the services.
+log "Configuring self-update (sudoers + update.sh)…"
+chmod +x "$APP_DIR/deploy/update.sh"
+install -m 0440 /dev/stdin /etc/sudoers.d/ai-visio-update <<SUDO
+$APP_USER ALL=(root) NOPASSWD: $APP_DIR/deploy/update.sh
+SUDO
+visudo -cf /etc/sudoers.d/ai-visio-update >/dev/null || {
+  log "WARNING: sudoers validation failed — removing rule; in-app update disabled."
+  rm -f /etc/sudoers.d/ai-visio-update
+}
 log "  Frontend: ${FRONTEND_ORIGINS}"
 log "  Backend:  ${API_URL}"
 log "  DB user:  ${DB_USER}  (password stored in ${ENV_FILE})"

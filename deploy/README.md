@@ -19,11 +19,44 @@ Two scripts under [`proxmox/`](proxmox/) automate everything below:
   automatically by `create-lxc.sh`, but can also be run by hand inside an existing
   container.
 
+If you already have the repo checked out on the Proxmox host:
+
 ```bash
 # On the Proxmox host
 cd /path/to/ai-visio/deploy/proxmox
 BOOTSTRAP_ADMINS=you@example.com ./create-lxc.sh
 ```
+
+### Bootstrap from a bare Proxmox host (nothing checked out yet)
+
+If the Proxmox host has **no copy of the repo**, pull the two deploy scripts straight
+from the (private) repo with your GitHub token, then run `create-lxc.sh`. It clones the
+rest of the code into the new container using the same token.
+
+```bash
+# On the Proxmox host, as root.
+export GITHUB_TOKEN=github_pat_xxx          # fine-grained: Contents=Read, or classic: repo
+REPO=justus4d4-dotcom/ai-visio
+API="https://api.github.com/repos/${REPO}/contents/deploy/proxmox"
+
+mkdir -p /root/ai-visio-deploy && cd /root/ai-visio-deploy
+for f in create-lxc.sh install.sh; do
+  curl -fsSL \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github.raw" \
+    "${API}/${f}?ref=main" -o "$f"
+done
+chmod +x create-lxc.sh
+
+# Create the unprivileged LXC and provision backend + frontend + PostgreSQL.
+BOOTSTRAP_ADMINS=you@example.com ./create-lxc.sh
+```
+
+The GitHub API `contents` endpoint (with `Accept: application/vnd.github.raw`) works for
+private repos, unlike the plain `raw.githubusercontent.com` URL. The token is only used
+to fetch code — `install.sh` rewrites the container's git remote to the tokenless URL,
+so the PAT is never persisted on disk. When it finishes it prints the container IP; open
+`http://<container-ip>:3000`.
 
 ### Private repository access
 
@@ -182,7 +215,65 @@ and set the ESP32 device IP under **Devices**.
 
 ## 7. Upgrades
 
+### In-app auto-update (recommended)
+
+The web UI can update the running deployment to the latest **GitHub Release** from
+**Settings → Update**. That section shows the installed version vs. the latest release,
+release notes and history, and an **Update** button that fetches the release, runs
+migrations, rebuilds the frontend and restarts both services — streaming the log live.
+
+Two things must be configured on the container for this to work:
+
+**a) A read-only GitHub token** so the backend can list releases and pull the private
+repo. Add it to the backend `.env` (fine-grained PAT with **Contents: Read**, or a
+classic PAT with the `repo` scope):
+
 ```bash
+echo 'GITHUB_TOKEN=github_pat_xxx' | sudo -u aivisio tee -a /opt/ai-visio/backend/.env
+chmod 600 /opt/ai-visio/backend/.env
+systemctl restart ai-visio-backend
+```
+
+**b) A scoped sudoers rule.** The backend runs unprivileged as `aivisio`, but the
+update ([`deploy/update.sh`](update.sh)) must run as root (git pull, pip/alembic,
+systemd). Grant `aivisio` permission to run **only** that one script as root:
+
+```bash
+chmod +x /opt/ai-visio/deploy/update.sh
+cat >/etc/sudoers.d/ai-visio-update <<'SUDO'
+aivisio ALL=(root) NOPASSWD: /opt/ai-visio/deploy/update.sh
+SUDO
+chmod 0440 /etc/sudoers.d/ai-visio-update
+visudo -cf /etc/sudoers.d/ai-visio-update   # validate syntax
+```
+
+The backend launches `sudo -n /opt/ai-visio/deploy/update.sh <release-tag>` detached in
+a new session (so it survives the backend restart it performs) and passes `GITHUB_TOKEN`
+through the environment. The requested tag is validated against the list of known
+release tags and a strict allowlist regex before being passed as an argv (no shell), so
+the endpoint can't be used to run arbitrary refs. Progress is written to
+`/opt/ai-visio/update.log`, which the UI polls via `GET /api/updates/progress`.
+
+Set `UPDATE_ENABLED=false` in the backend `.env` to disable the feature (the Update
+button is then greyed out).
+
+### Release workflow
+
+The updater targets **GitHub Releases**, so cut a release for each version you want to
+ship:
+
+1. Tag the commit and push (e.g. `git tag v1.2.0 && git push origin v1.2.0`).
+2. Create a **Release** for that tag on GitHub and write the release notes in its body
+   (they render in the Update panel). Mark it *pre-release* to keep it out of the
+   "latest" comparison.
+
+The container updates to the newest non-pre-release tag.
+
+### Manual upgrade (fallback)
+
+```bash
+sudo /opt/ai-visio/deploy/update.sh v1.2.0     # or any release tag
+# …or the old by-hand steps:
 cd /opt/ai-visio && sudo -u aivisio git pull
 cd backend  && sudo -u aivisio .venv/bin/pip install -e . && sudo -u aivisio .venv/bin/alembic upgrade head
 cd ../frontend && sudo -u aivisio pnpm install && sudo -u aivisio pnpm build
