@@ -30,16 +30,19 @@ _RETRY_BACKOFF = (0.4, 0.9)  # seconds; kept short to respect the latency budget
 NO_ANSWER_TEXT = "No answer could be read from this image."
 
 # Models ordered from cheapest/fastest to most capable. When a frame is unreadable we
-# escalate up this ladder before giving up.
-MODEL_LADDER = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro")
+# escalate up this ladder before giving up. gemini-2.5-pro is intentionally NOT in the
+# auto-escalation path: it's several times slower (it was the main cause of 15-20s
+# solves). Users can still pick it explicitly as their model in Settings.
+MODEL_LADDER = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
 # Max number of models to try for a single solve (the configured model + fallbacks).
-MAX_SOLVE_ATTEMPTS = 3
+# Keep this at 2 so a solve is at most two sequential API calls.
+MAX_SOLVE_ATTEMPTS = 2
 
 # Max edge (px) we send to Gemini. The native agent streams the WHOLE desktop, so the
-# question is only a fraction of the frame — it must stay legible. 1568px is Gemini's
-# single-tile sweet spot; below ~1200 full-screen exam text becomes unreadable and the
-# model starts guessing (wrong answers). Raise further if you capture 4K displays.
-MAX_EDGE = 1568
+# question is only a fraction of the frame and must stay legible — but oversized frames
+# cost latency. 1280px is a good balance: ~2x the pixels of the old 640 (readable exam
+# text) while noticeably faster than 1568. Raise toward 1568/2048 for 4K displays.
+MAX_EDGE = 1280
 
 PROMPT = """You are an expert exam solver. The image is a screenshot that may contain a \
 multiple-choice question. Read ONLY what is actually visible in the image and choose the \
