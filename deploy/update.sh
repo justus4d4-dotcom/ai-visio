@@ -75,6 +75,12 @@ log "Updating $APP_DIR to ${TARGET_REF}…"
 
 export GIT_TERMINAL_PROMPT=0
 
+# The checkout is owned by $APP_USER but we run as root, so git would refuse with
+# "detected dubious ownership". Mark it safe system-wide (/etc/gitconfig) so it works
+# regardless of which HOME the updater runs under (e.g. via systemd-run). Idempotent.
+git config --system --get-all safe.directory 2>/dev/null | grep -qxF "$APP_DIR" \
+  || git config --system --add safe.directory "$APP_DIR" 2>/dev/null || true
+
 # Build an authenticated fetch URL for private repos; keep the token off disk.
 FETCH_URL="$REPO_URL"
 if [[ -n "$GITHUB_TOKEN" ]]; then
