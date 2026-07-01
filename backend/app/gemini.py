@@ -35,9 +35,11 @@ MODEL_LADDER = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro")
 # Max number of models to try for a single solve (the configured model + fallbacks).
 MAX_SOLVE_ATTEMPTS = 3
 
-# Max edge (px) we send to Gemini. Combined with media_resolution=LOW this keeps the
-# image to a couple of tiles for fast, cheap inference while staying readable.
-MAX_EDGE = 640
+# Max edge (px) we send to Gemini. The native agent streams the WHOLE desktop, so the
+# question is only a fraction of the frame — it must stay legible. 1568px is Gemini's
+# single-tile sweet spot; below ~1200 full-screen exam text becomes unreadable and the
+# model starts guessing (wrong answers). Raise further if you capture 4K displays.
+MAX_EDGE = 1568
 
 PROMPT = """You are an expert exam solver. The image is a screenshot that may contain a \
 multiple-choice question. Read ONLY what is actually visible in the image and choose the \
@@ -176,10 +178,12 @@ def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
         response_mime_type="application/json",
         response_schema=_GeminiAnswer,
         temperature=0,
-        # Speed: no thinking, small output, low image resolution (fewer tiles/tokens).
+        # No thinking + small output for speed. Use MEDIUM (Gemini's default) image
+        # resolution: LOW tokenises the frame too coarsely to read exam text, which is
+        # the main cause of wrong answers. Bump to HIGH if small text is still misread.
         thinking_config=types.ThinkingConfig(thinking_budget=0),
         max_output_tokens=200,
-        media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+        media_resolution=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
     )
 
     resp = _generate_with_retry(client, cfg.model, data, mime, config)
