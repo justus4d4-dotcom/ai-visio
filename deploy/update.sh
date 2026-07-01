@@ -23,6 +23,12 @@ REPO_URL="${REPO_URL:-https://github.com/justus4d4-dotcom/ai-visio}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 UPDATE_LOG="${UPDATE_LOG:-${APP_DIR}/update.log}"
 
+# Fall back to the token already stored in the backend .env, so a manual
+# `sudo update.sh <ref>` works without re-passing GITHUB_TOKEN on the command line.
+if [[ -z "$GITHUB_TOKEN" && -f "${APP_DIR}/backend/.env" ]]; then
+  GITHUB_TOKEN="$(sed -n 's/^[[:space:]]*GITHUB_TOKEN[[:space:]]*=[[:space:]]*//p' "${APP_DIR}/backend/.env" | tail -n1 | tr -d '"'"'"'\r')"
+fi
+
 TARGET_REF="${1:-}"
 
 # Send everything to the log (and stdout) from here on.

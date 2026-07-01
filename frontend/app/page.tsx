@@ -47,8 +47,9 @@ export default function Home() {
   const [historyTick, setHistoryTick] = useState(0);
 
   // Capture source: "browser" (this Chrome tab's screen share) or "agent" (the native
-  // macOS Python agent that streams frames to the backend).
-  const [captureSource, setCaptureSource] = useState<"browser" | "agent">("browser");
+  // macOS Python agent that streams frames to the backend). The agent is the default
+  // since it needs no per-tab screen share and survives page reloads.
+  const [captureSource, setCaptureSource] = useState<"browser" | "agent">("agent");
   const [agentOnline, setAgentOnline] = useState(false);
   // Object URL of the latest frame fetched from the agent. Swapped only on a successful
   // fetch and cleared when frames stop, so the preview never freezes on a stale image.
@@ -114,8 +115,10 @@ export default function Home() {
   async function fetchAgentFrame(): Promise<Blob | null> {
     try {
       const res = await fetch(`${API_URL}/api/remote/frame`, { cache: "no-store" });
-      if (!res.ok) return null;
-      return await res.blob();
+      // 204 = no fresh agent frame yet (a success, so the console stays quiet).
+      if (!res.ok || res.status === 204) return null;
+      const blob = await res.blob();
+      return blob.size > 0 ? blob : null;
     } catch {
       return null;
     }

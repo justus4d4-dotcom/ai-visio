@@ -1,0 +1,88 @@
+name: Release
+
+# Auto-publish a GitHub Release for every change merged to main. The in-app updater
+# (Settings → Update) tracks the newest non-prerelease tag, so each release becomes an
+# installable version. Versions are semver tags "vMAJOR.MINOR.PATCH".
+#
+# Bump level (default: patch):
+#   * put "#minor" or "#major" anywhere in the pushed commit message, or
+#   * run this workflow manually (Actions → Release → Run workflow) and pick a level.
+# Add "[skip release]" to a commit message to skip publishing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        type: choice
+        default: auto
+        options: [auto, patch, minor, major]
+
+# Never let two release runs race on the tag/version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_BUMP: ${{ github.event.inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          msg="$(git log -1 --pretty=%B)"
+          if printf '%s' "$msg" | grep -qiE '\[skip release\]|\[release skip\]'; then
+            echo "Commit requests skip — no release."
+            exit 0
+          fi
+
+          # Decide the bump level: manual input > commit-message tag > patch.
+          bump="${DISPATCH_BUMP:-auto}"
+          if [ "$bump" = "auto" ] || [ -z "$bump" ]; then
+            if printf '%s' "$msg" | grep -qiE '#major'; then bump=major
+            elif printf '%s' "$msg" | grep -qiE '#minor'; then bump=minor
+            else bump=patch; fi
+          fi
+
+          latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$latest" ]; then
+            next="v0.1.0"
+          else
+            ver="${latest#v}"
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            patch="${rest#*.}"
+            case "$bump" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              *)     patch=$((patch + 1)) ;;
+            esac
+            next="v${major}.${minor}.${patch}"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${next}" >/dev/null; then
+            echo "Tag ${next} already exists — nothing to do."
+            exit 0
+          fi
+
+          echo "Publishing release ${next} (bump: ${bump}, previous: ${latest:-none})."
+          # Creates the tag on this commit and a release with auto-generated notes.
+          gh release create "$next" \
+            --title "$next" \
+            --target "$GITHUB_SHA" \
+            --generate-notes

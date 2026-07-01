@@ -37,15 +37,15 @@ _state: dict[str, object] = {
 }
 
 # Which capture source currently answers triggers:
-#   "browser" — the Next.js tab holding a getDisplayMedia share (default)
-#   "agent"   — the native macOS Python agent (streams the whole screen)
+#   "agent"   — the native macOS Python agent (streams the whole screen) — default
+#   "browser" — the Next.js tab holding a getDisplayMedia share
 # Only one source consumes triggers at a time so a frame is never solved twice.
 #
 # In "agent" mode the agent only *records* the screen and pushes frames here; the
 # browser (which holds the BYOK Gemini key) solves the latest frame on a trigger. So
 # the agent never needs the API key.
 _capture: dict[str, object] = {
-    "source": "browser",
+    "source": "agent",
     "frame": None,            # bytes | None — latest screen frame from the owner agent
     "frame_at": None,         # datetime | None
     "frame_ct": "image/jpeg",  # content type of the stored frame
@@ -251,7 +251,10 @@ async def upload_frame(
 def get_frame() -> Response:
     """Return the latest frame pushed by the agent (used by the browser to solve)."""
     if not _frame_fresh():
-        raise HTTPException(status_code=404, detail="no fresh agent frame")
+        # 204 (not 404) so the browser's ~1 fps polling for a preview frame doesn't
+        # spam the devtools console with failed-request errors while no agent is
+        # streaming. 204 is a success status, so it renders no error.
+        return Response(status_code=204)
     return Response(
         content=bytes(_capture["frame"]),  # type: ignore[arg-type]
         media_type=str(_capture["frame_ct"]),
