@@ -235,6 +235,15 @@ class UpdateError(RuntimeError):
     """Raised when an update cannot be started (bad ref, disabled, missing script)."""
 
 
+def _mark_launch_failed(log_path: Path, message: str) -> None:
+    """Write a FAILED marker so the UI shows the failure instead of spinning on 'running'."""
+    try:
+        with log_path.open("a") as fh:
+            fh.write(f"{_MARKER_START} (launch)\n[update] {message}\n{_MARKER_FAIL}\n")
+    except OSError:
+        pass
+
+
 def apply_update(target: str | None) -> str:
     """Validate the target ref and launch the detached update script.
 
@@ -271,27 +280,49 @@ def apply_update(target: str | None) -> str:
         raise UpdateError("Target ref contains disallowed characters.")
 
     # Reset the log so progress polling reflects only this run.
+    log_path = Path(settings.update_log)
     try:
-        Path(settings.update_log).write_text("")
+        log_path.write_text("")
     except OSError:
         pass  # the script itself will (re)create it
 
-    # Launch detached and privileged. setsid + a new session means the child outlives
-    # this backend process when the script restarts the service. sudo is scoped by a
-    # sudoers rule to exactly this script (see deploy/README.md).
+    # Launch detached and privileged. update.sh re-execs itself via systemd-run, so the
+    # `sudo` process exits ~immediately on success; if sudo is not permitted (missing
+    # sudoers rule) it exits non-zero right away. Wait briefly to tell these apart so a
+    # denied launch surfaces a clear error instead of a UI that spins forever.
     env = dict(os.environ)
     if settings.github_token:
         env["GITHUB_TOKEN"] = settings.github_token
     try:
-        subprocess.Popen(  # noqa: S603 - fixed argv, validated ref
+        proc = subprocess.Popen(  # noqa: S603 - fixed argv, validated ref
             ["sudo", "-n", str(script), target],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
             env=env,
         )
     except OSError as exc:
+        _mark_launch_failed(log_path, f"Failed to launch update script: {exc}")
         raise UpdateError(f"Failed to launch update script: {exc}") from exc
+
+    try:
+        _, stderr = proc.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        # Still running (e.g. an update.sh without the systemd-run self-detach runs the
+        # whole update inline) — that's a successful launch.
+        return target
+    if proc.returncode:
+        tail = (stderr or b"").decode(errors="replace").strip().splitlines()
+        reason = tail[-1] if tail else ""
+        detail = (
+            f"The updater could not be started (exit {proc.returncode})."
+            + (f" {reason}" if reason else "")
+            + " This is usually a missing sudoers rule — add "
+            "'aivisio ALL=(root) NOPASSWD: /opt/ai-visio/deploy/update.sh' to "
+            "/etc/sudoers.d/ai-visio-update (mode 0440)."
+        )
+        _mark_launch_failed(log_path, detail)
+        raise UpdateError(detail)
 
     return target
