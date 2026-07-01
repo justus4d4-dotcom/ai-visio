@@ -76,7 +76,7 @@ async def solve(
     result: SolveResult | None = None
     started = time.perf_counter()
     try:
-        for model in gemini.fallback_models(cfg.model):
+        for model in gemini.fallback_models(cfg.model, cfg.auto_escalate):
             result = gemini.solve_image(data, cfg.model_copy(update={"model": model}))
             # Record every metered API call for the monitoring dashboard (best-effort).
             try:

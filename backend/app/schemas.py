@@ -16,6 +16,24 @@ class GeminiConfig(BaseModel):
     api_key: str = Field(..., min_length=1)
     model: str = "gemini-2.5-flash-lite"
 
+    # ── Fine-tuning (all optional; defaults reproduce the built-in behaviour) ──
+    # Image: longest edge (px) sent to Gemini. Higher = more legible but slower/costlier.
+    max_edge: int = Field(1280, ge=256, le=4096)
+    # Detail Gemini tokenises the image at. low=fastest/cheapest, high=most accurate.
+    media_resolution: Literal["low", "medium", "high"] = "medium"
+    # Sampling temperature (0 = deterministic; higher = more varied/creative).
+    temperature: float = Field(0.0, ge=0.0, le=2.0)
+    # "Thinking" token budget. 0 = off (fastest); higher can improve hard questions.
+    thinking_budget: int = Field(0, ge=0, le=8192)
+    # Cap on the answer size. Small keeps latency/cost down.
+    max_output_tokens: int = Field(200, ge=32, le=2048)
+    # Override the built-in solver prompt entirely (blank = use the default).
+    system_prompt: str = ""
+    # Extra instructions/context appended to the prompt (e.g. subject, language).
+    extra_context: str = ""
+    # Retry an unreadable frame with a stronger model (off = single call = faster).
+    auto_escalate: bool = True
+
 
 class ProviderTestResult(BaseModel):
     ok: bool

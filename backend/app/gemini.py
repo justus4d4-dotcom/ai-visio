@@ -42,7 +42,15 @@ MAX_SOLVE_ATTEMPTS = 2
 # question is only a fraction of the frame and must stay legible — but oversized frames
 # cost latency. 1280px is a good balance: ~2x the pixels of the old 640 (readable exam
 # text) while noticeably faster than 1568. Raise toward 1568/2048 for 4K displays.
+# This is the fallback default; callers pass cfg.max_edge per request.
 MAX_EDGE = 1280
+
+# Map the config's media_resolution string to the SDK enum.
+_MEDIA_RES = {
+    "low": types.MediaResolution.MEDIA_RESOLUTION_LOW,
+    "medium": types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+    "high": types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+}
 
 PROMPT = """You are an expert exam solver. The image is a screenshot that may contain a \
 multiple-choice question. Read ONLY what is actually visible in the image and choose the \
@@ -112,9 +120,12 @@ def is_unreadable(result: SolveResult) -> bool:
     )
 
 
-def fallback_models(configured: str) -> list[str]:
+def fallback_models(configured: str, auto_escalate: bool = True) -> list[str]:
     """Ordered models to try for one solve: the configured model first, then escalate to
-    progressively more capable models. Deduplicated and capped at MAX_SOLVE_ATTEMPTS."""
+    progressively more capable models. Deduplicated and capped at MAX_SOLVE_ATTEMPTS.
+    When auto_escalate is False, only the configured model is tried (one API call)."""
+    if not auto_escalate:
+        return [configured]
     models = [configured]
     if configured in MODEL_LADDER:
         extras = MODEL_LADDER[MODEL_LADDER.index(configured) + 1 :]
@@ -126,12 +137,12 @@ def fallback_models(configured: str) -> list[str]:
     return models[:MAX_SOLVE_ATTEMPTS]
 
 
-def _downscale_png(image_bytes: bytes) -> tuple[bytes, str]:
-    """Downscale to MAX_EDGE on the longest side and return (bytes, mime_type)."""
+def _downscale_png(image_bytes: bytes, max_edge: int = MAX_EDGE) -> tuple[bytes, str]:
+    """Downscale to max_edge on the longest side and return (bytes, mime_type)."""
     img = Image.open(io.BytesIO(image_bytes))
     img = img.convert("RGB")
-    if max(img.size) > MAX_EDGE:
-        scale = MAX_EDGE / max(img.size)
+    if max(img.size) > max_edge:
+        scale = max_edge / max(img.size)
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=85)
@@ -153,14 +164,14 @@ def list_models(cfg: GeminiConfig) -> list[str]:
     return sorted(set(names))
 
 
-def _generate_with_retry(client, model, data, mime, config):
+def _generate_with_retry(client, model, data, mime, config, prompt):
     """Call generate_content, retrying briefly on transient 429/503 errors."""
     last_exc: Exception | None = None
     for attempt in range(len(_RETRY_BACKOFF) + 1):
         try:
             return client.models.generate_content(
                 model=model,
-                contents=[PROMPT, types.Part.from_bytes(data=data, mime_type=mime)],
+                contents=[prompt, types.Part.from_bytes(data=data, mime_type=mime)],
                 config=config,
             )
         except genai_errors.APIError as exc:
@@ -175,21 +186,27 @@ def _generate_with_retry(client, model, data, mime, config):
 
 def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
     client = _client(cfg)
-    data, mime = _downscale_png(image_bytes)
+    data, mime = _downscale_png(image_bytes, cfg.max_edge)
 
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=_GeminiAnswer,
-        temperature=0,
-        # No thinking + small output for speed. Use MEDIUM (Gemini's default) image
-        # resolution: LOW tokenises the frame too coarsely to read exam text, which is
-        # the main cause of wrong answers. Bump to HIGH if small text is still misread.
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
-        max_output_tokens=200,
-        media_resolution=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+        temperature=cfg.temperature,
+        # thinking_budget=0 disables "thinking" (fastest). media_resolution controls how
+        # finely the frame is tokenised. Both are user-tunable in Settings.
+        thinking_config=types.ThinkingConfig(thinking_budget=cfg.thinking_budget),
+        max_output_tokens=cfg.max_output_tokens,
+        media_resolution=_MEDIA_RES.get(
+            cfg.media_resolution, types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
+        ),
     )
 
-    resp = _generate_with_retry(client, cfg.model, data, mime, config)
+    # Prompt: a user override replaces the default; extra context is appended to either.
+    prompt = cfg.system_prompt.strip() or PROMPT
+    if cfg.extra_context.strip():
+        prompt = f"{prompt}\n\nAdditional context from the user:\n{cfg.extra_context.strip()}"
+
+    resp = _generate_with_retry(client, cfg.model, data, mime, config, prompt)
 
     prompt_tokens = output_tokens = total_tokens = None
     if resp.usage_metadata is not None:

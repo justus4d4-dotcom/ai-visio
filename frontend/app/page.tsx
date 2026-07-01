@@ -924,6 +924,127 @@ function SettingsPanel({
         </label>
       </div>
 
+      <details className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
+        <summary className="cursor-pointer select-none text-sm font-medium text-neutral-200">
+          Fine-tuning · quality vs speed
+        </summary>
+        <p className="mt-1 text-xs text-neutral-500">
+          Bigger images / higher detail / thinking &amp; escalation improve accuracy but
+          cost speed. Lower them for faster, cheaper solves.
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs">
+            Image size (longest edge): <b>{cfg.max_edge ?? 1280}px</b>
+            <input
+              type="range"
+              min={512}
+              max={2048}
+              step={64}
+              value={cfg.max_edge ?? 1280}
+              onChange={(e) => set({ max_edge: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+            <span className="text-[10px] text-neutral-500">
+              Higher = more legible text, slower. ~1280 suits 1080p; ~1568–2048 for 4K.
+            </span>
+          </label>
+
+          <label className="text-xs">
+            Image detail (media resolution)
+            <select
+              value={cfg.media_resolution ?? "medium"}
+              onChange={(e) =>
+                set({ media_resolution: e.target.value as "low" | "medium" | "high" })
+              }
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            >
+              <option value="low">low — fastest / cheapest</option>
+              <option value="medium">medium — balanced (default)</option>
+              <option value="high">high — most accurate / slowest</option>
+            </select>
+          </label>
+
+          <label className="text-xs">
+            Temperature: <b>{(cfg.temperature ?? 0).toFixed(1)}</b>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={cfg.temperature ?? 0}
+              onChange={(e) => set({ temperature: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+            <span className="text-[10px] text-neutral-500">
+              0 = deterministic (recommended for exams). Higher = more varied.
+            </span>
+          </label>
+
+          <label className="text-xs">
+            Thinking budget (tokens): <b>{cfg.thinking_budget ?? 0}</b>
+            <input
+              type="range"
+              min={0}
+              max={2048}
+              step={128}
+              value={cfg.thinking_budget ?? 0}
+              onChange={(e) => set({ thinking_budget: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+            <span className="text-[10px] text-neutral-500">
+              0 = off (fastest). Raise to help hard/multi-step questions.
+            </span>
+          </label>
+
+          <label className="text-xs">
+            Max answer tokens
+            <input
+              type="number"
+              min={32}
+              max={2048}
+              step={16}
+              value={cfg.max_output_tokens ?? 200}
+              onChange={(e) => set({ max_output_tokens: Number(e.target.value) })}
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            />
+          </label>
+
+          <label className="flex items-center gap-2 self-end text-xs">
+            <input
+              type="checkbox"
+              checked={cfg.auto_escalate ?? true}
+              onChange={(e) => set({ auto_escalate: e.target.checked })}
+              className="h-4 w-4"
+            />
+            Auto-escalate to a stronger model if unreadable
+            <span className="text-[10px] text-neutral-500">(off = faster)</span>
+          </label>
+
+          <label className="col-span-full text-xs">
+            System prompt override
+            <textarea
+              value={cfg.system_prompt ?? ""}
+              onChange={(e) => set({ system_prompt: e.target.value })}
+              placeholder="Leave blank to use the built-in exam-solver prompt."
+              rows={4}
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 font-mono text-xs"
+            />
+          </label>
+
+          <label className="col-span-full text-xs">
+            Extra context (appended to the prompt)
+            <textarea
+              value={cfg.extra_context ?? ""}
+              onChange={(e) => set({ extra_context: e.target.value })}
+              placeholder="e.g. Questions are in German about AWS. Prefer the AWS-recommended answer."
+              rows={2}
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-xs"
+            />
+          </label>
+        </div>
+      </details>
+
       <div className="mt-4 flex items-center gap-3">
         <button
           onClick={onSave}

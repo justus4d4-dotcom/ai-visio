@@ -1,6 +1,15 @@
 export type ProviderConfig = {
   api_key: string;
   model: string;
+  // Fine-tuning (optional; omitted fields fall back to backend defaults).
+  max_edge?: number;
+  media_resolution?: "low" | "medium" | "high";
+  temperature?: number;
+  thinking_budget?: number;
+  max_output_tokens?: number;
+  system_prompt?: string;
+  extra_context?: string;
+  auto_escalate?: boolean;
 };
 
 export type SolveResult = {
@@ -33,6 +42,14 @@ export const DEFAULT_GEMINI_MODELS = [
 export const DEFAULT_CONFIG: ProviderConfig = {
   api_key: "",
   model: "gemini-2.5-flash-lite",
+  max_edge: 1280,
+  media_resolution: "medium",
+  temperature: 0,
+  thinking_budget: 0,
+  max_output_tokens: 200,
+  system_prompt: "",
+  extra_context: "",
+  auto_escalate: true,
 };
 
 export function loadConfig(): ProviderConfig {
