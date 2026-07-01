@@ -20,8 +20,10 @@ ExecStart=/opt/ai-visio/backend/.venv/bin/uvicorn app.main:app \
   --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers
 Restart=on-failure
 RestartSec=3
-# Hardening
-NoNewPrivileges=true
+# Hardening. NOTE: NoNewPrivileges is intentionally NOT set — the in-app updater
+# (Settings → Update) works by running `sudo -n /opt/ai-visio/deploy/update.sh`, and
+# NoNewPrivileges=true blocks sudo's setuid elevation, so the update would silently
+# fail. sudo is scoped by /etc/sudoers.d/ai-visio-update to exactly that one script.
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
