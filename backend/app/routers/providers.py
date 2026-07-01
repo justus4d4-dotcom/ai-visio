@@ -26,3 +26,9 @@ def test_provider(cfg: GeminiConfig) -> ProviderTestResult:
             raise HTTPException(status_code=401, detail="Invalid Gemini API key.")
         raise HTTPException(status_code=502, detail=friendly_provider_error(exc))
     return ProviderTestResult(ok=True, models=models)
+
+
+@router.get("/default-prompt")
+def default_prompt() -> dict[str, str]:
+    """The built-in solver prompt, so the settings UI can show it for editing."""
+    return {"prompt": gemini.PROMPT}

@@ -838,6 +838,17 @@ function SettingsPanel({
   const [testOk, setTestOk] = useState<boolean | null>(null);
   const [testMsg, setTestMsg] = useState<string | null>(null);
 
+  // The built-in solver prompt, fetched so the field can show it for editing. When the
+  // user leaves it unchanged we keep cfg.system_prompt empty so the backend always uses
+  // its current default (no drift); editing it turns it into an override.
+  const [defaultPrompt, setDefaultPrompt] = useState("");
+  useEffect(() => {
+    fetch(`${API_URL}/api/providers/default-prompt`)
+      .then((r) => r.json())
+      .then((d) => setDefaultPrompt(d.prompt ?? ""))
+      .catch(() => {});
+  }, []);
+
   async function testConnection() {
     setTesting(true);
     setTestOk(null);
@@ -1022,14 +1033,26 @@ function SettingsPanel({
           </label>
 
           <label className="col-span-full text-xs">
-            System prompt override
+            <span className="flex items-center justify-between">
+              System prompt
+              <button
+                type="button"
+                onClick={() => set({ system_prompt: "" })}
+                className="text-[10px] text-indigo-400 hover:underline"
+              >
+                Reset to default
+              </button>
+            </span>
             <textarea
-              value={cfg.system_prompt ?? ""}
+              value={cfg.system_prompt ? cfg.system_prompt : defaultPrompt}
               onChange={(e) => set({ system_prompt: e.target.value })}
-              placeholder="Leave blank to use the built-in exam-solver prompt."
-              rows={4}
+              rows={10}
               className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 font-mono text-xs"
             />
+            <span className="text-[10px] text-neutral-500">
+              The exact instruction sent to Gemini. Edit to change behaviour; “Reset to
+              default” reverts to the built-in prompt (also used while left unchanged).
+            </span>
           </label>
 
           <label className="col-span-full text-xs">
