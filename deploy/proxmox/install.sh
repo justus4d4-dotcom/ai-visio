@@ -196,15 +196,19 @@ systemctl restart ai-visio-backend ai-visio-frontend
 # ── In-app self-update ────────────────────────────────────────────────────────
 # Allow the unprivileged backend to run ONLY the update script as root, so the
 # "Update" button in Settings can pull a new release and restart the services.
-log "Configuring self-update (sudoers + update.sh)…"
-chmod +x "$APP_DIR/deploy/update.sh"
-install -m 0440 /dev/stdin /etc/sudoers.d/ai-visio-update <<SUDO
+if [[ -f "$APP_DIR/deploy/update.sh" ]]; then
+  log "Configuring self-update (sudoers + update.sh)…"
+  chmod +x "$APP_DIR/deploy/update.sh"
+  install -m 0440 /dev/stdin /etc/sudoers.d/ai-visio-update <<SUDO
 $APP_USER ALL=(root) NOPASSWD: $APP_DIR/deploy/update.sh
 SUDO
-visudo -cf /etc/sudoers.d/ai-visio-update >/dev/null || {
-  log "WARNING: sudoers validation failed — removing rule; in-app update disabled."
-  rm -f /etc/sudoers.d/ai-visio-update
-}
+  visudo -cf /etc/sudoers.d/ai-visio-update >/dev/null || {
+    log "WARNING: sudoers validation failed — removing rule; in-app update disabled."
+    rm -f /etc/sudoers.d/ai-visio-update
+  }
+else
+  log "NOTE: deploy/update.sh not present — skipping in-app self-update wiring."
+fi
 log "  Frontend: ${FRONTEND_ORIGINS}"
 log "  Backend:  ${API_URL}"
 log "  DB user:  ${DB_USER}  (password stored in ${ENV_FILE})"

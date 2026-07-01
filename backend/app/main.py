@@ -20,6 +20,7 @@ from app.config import settings
 from app.database import engine
 from app.routers import providers, remote, solve
 from app.routers import history, usage
+from app.routers import updates
 
 app = FastAPI(title="AI Image Interpreter backend", version="0.1.0")
 
@@ -36,6 +37,7 @@ app.include_router(providers.router)
 app.include_router(remote.router)
 app.include_router(history.router)
 app.include_router(usage.router)
+app.include_router(updates.router)
 
 
 @app.get("/health")
