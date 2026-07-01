@@ -10,8 +10,14 @@ Group=aivisio
 WorkingDirectory=/opt/ai-visio/backend
 # Secrets (DATABASE_URL, ENCRYPTION_KEY, AUTH_SECRET, ...) live in this file, mode 0600.
 EnvironmentFile=/opt/ai-visio/backend/.env
+# IMPORTANT: exactly ONE worker. The remote-control bridge (app/routers/remote.py)
+# keeps the ESP32 trigger state, the agent registry, the latest frame and the
+# WebSocket hub in per-process memory. With >1 worker, requests round-robin across
+# processes that each hold a different view, so the capture source flaps
+# browser<->agent, the agent flaps online<->offline, devices flap connect<->
+# disconnect, and GET /api/remote/frame is 200 on one worker and 404 on the other.
 ExecStart=/opt/ai-visio/backend/.venv/bin/uvicorn app.main:app \
-  --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
+  --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers
 Restart=on-failure
 RestartSec=3
 # Hardening
