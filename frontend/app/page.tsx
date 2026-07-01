@@ -358,8 +358,9 @@ export default function Home() {
     <main className="min-h-screen p-6 max-w-6xl mx-auto">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">AI Image Interpreter</h1>
-          <p className="text-sm text-neutral-400">Vision interpreter — Gemini</p>
+          <h1 className="bg-gradient-to-r from-indigo-400 via-sky-400 to-emerald-400 bg-clip-text text-4xl font-black uppercase tracking-[0.2em] text-transparent drop-shadow-[0_1px_12px_rgba(56,189,248,0.25)]">
+            AI VISIO
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <button
