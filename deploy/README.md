@@ -25,6 +25,46 @@ cd /path/to/ai-visio/deploy/proxmox
 BOOTSTRAP_ADMINS=you@example.com ./create-lxc.sh
 ```
 
+### Private repository access
+
+This is a **private** repo, so the container needs credentials to fetch the code.
+Pick one of the following.
+
+**Option A — GitHub token (simplest).** Create a Personal Access Token with read-only
+access to the repo (fine-grained PAT with **Contents: Read**, or a classic PAT with the
+`repo` scope), then pass it via `GITHUB_TOKEN`:
+
+```bash
+# On the Proxmox host
+GITHUB_TOKEN=github_pat_xxx BOOTSTRAP_ADMINS=you@example.com ./create-lxc.sh
+```
+
+The token is used only to fetch the code and is **not** written to disk — the stored
+git remote is rewritten to the tokenless URL after cloning. (Interactive credential
+prompts are disabled, so a missing/invalid token fails fast instead of hanging.)
+
+**Option B — no clone at all (offline copy).** Create the container, then copy your
+local working tree straight in and run `install.sh` (which will reuse the existing
+checkout instead of cloning):
+
+```bash
+# On the Proxmox host, from your local repo checkout
+pct create 110 local:vztmpl/ubuntu-24.04-standard_*.tar.zst \
+  --hostname ai-visio --cores 2 --memory 2048 --swap 512 \
+  --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 1 --features nesting=1
+pct start 110
+# Push the code (exclude local build/venv artifacts) and provision
+tar --exclude .git --exclude '**/.venv' --exclude '**/node_modules' \
+    --exclude '**/.next' -czf - -C /path/to/ai-visio . \
+  | pct exec 110 -- bash -c 'mkdir -p /opt/ai-visio && tar -xzf - -C /opt/ai-visio'
+pct push 110 deploy/proxmox/install.sh /root/install.sh --perms 0755
+pct exec 110 -- env BOOTSTRAP_ADMINS=you@example.com bash /root/install.sh
+```
+
+**Option C — SSH deploy key.** Add a read-only deploy key to the repo and switch
+`REPO_URL` to the SSH form (`git@github.com:owner/repo.git`), placing the private key
+at `/root/.ssh/id_ed25519` inside the container before running `install.sh`.
+
 Common overrides (all optional env vars):
 
 | Variable            | Default                          | Purpose                                  |
@@ -37,6 +77,7 @@ Common overrides (all optional env vars):
 | `BRIDGE`            | `vmbr0`                          | Network bridge                           |
 | `IPCONFIG`          | `ip=dhcp`                        | e.g. `ip=192.0.2.10/24,gw=192.0.2.10` |
 | `REPO_URL`/`REPO_REF` | GitHub repo / `main`           | Source to deploy                         |
+| `GITHUB_TOKEN`      | *(empty)*                        | PAT for cloning a private repo           |
 | `BOOTSTRAP_ADMINS`  | *(empty)*                        | Comma-separated admin emails             |
 | `DB_PASSWORD`       | *(auto-generated)*               | PostgreSQL password                      |
 

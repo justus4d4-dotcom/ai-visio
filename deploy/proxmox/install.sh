@@ -17,6 +17,10 @@ APP_USER="${APP_USER:-aivisio}"
 APP_DIR="${APP_DIR:-/opt/ai-visio}"
 REPO_URL="${REPO_URL:-https://github.com/justus4d4-dotcom/ai-visio}"
 REPO_REF="${REPO_REF:-main}"
+# For a PRIVATE repo, supply a GitHub token (a fine-grained PAT with read-only
+# "Contents" access, or a classic PAT with `repo` scope). It is used only to
+# fetch the code and is NOT written to disk (the stored remote stays tokenless).
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 NODE_MAJOR="${NODE_MAJOR:-20}"
 
 DB_NAME="${DB_NAME:-aiexams}"
@@ -76,15 +80,34 @@ if ! id "$APP_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$APP_USER"
 fi
 
+# Build an authenticated fetch URL for private repos. The token is used only for
+# the transfer; the remote stored in .git/config is the clean, tokenless URL.
+# Fail fast instead of hanging on a credential prompt if auth is missing/wrong.
+export GIT_TERMINAL_PROMPT=0
+FETCH_URL="$REPO_URL"
+if [[ -n "$GITHUB_TOKEN" ]]; then
+  case "$REPO_URL" in
+    https://github.com/*)
+      FETCH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_URL#https://github.com/}"
+      ;;
+    *)
+      log "GITHUB_TOKEN set but REPO_URL is not an https://github.com/ URL — ignoring token."
+      ;;
+  esac
+fi
+
 if [[ -d "$APP_DIR/.git" ]]; then
   log "Updating existing checkout in $APP_DIR…"
-  git -C "$APP_DIR" fetch --depth 1 origin "$REPO_REF"
-  git -C "$APP_DIR" checkout -f "$REPO_REF"
-  git -C "$APP_DIR" reset --hard "origin/${REPO_REF}" 2>/dev/null || git -C "$APP_DIR" reset --hard "$REPO_REF"
+  git -C "$APP_DIR" fetch --depth 1 "$FETCH_URL" "$REPO_REF"
+  git -C "$APP_DIR" checkout -f "$REPO_REF" 2>/dev/null || true
+  git -C "$APP_DIR" reset --hard FETCH_HEAD
+  git -C "$APP_DIR" remote set-url origin "$REPO_URL" 2>/dev/null || true
 else
   log "Cloning $REPO_URL ($REPO_REF) into $APP_DIR…"
   mkdir -p "$APP_DIR"
-  git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$APP_DIR"
+  git clone --depth 1 --branch "$REPO_REF" "$FETCH_URL" "$APP_DIR"
+  # Strip the token from the stored remote so it never lands on disk.
+  git -C "$APP_DIR" remote set-url origin "$REPO_URL"
 fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 

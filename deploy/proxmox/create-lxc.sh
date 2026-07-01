@@ -32,6 +32,9 @@ UNPRIVILEGED="${UNPRIVILEGED:-1}"
 # Repo + app config passed through to install.sh
 REPO_URL="${REPO_URL:-https://github.com/justus4d4-dotcom/ai-visio}"
 REPO_REF="${REPO_REF:-main}"
+# For a PRIVATE repo, export GITHUB_TOKEN (fine-grained PAT with read-only
+# Contents access, or a classic PAT with `repo` scope) before running.
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 BOOTSTRAP_ADMINS="${BOOTSTRAP_ADMINS:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 
@@ -88,6 +91,7 @@ log "Running provisioning inside the container…"
 pct exec "$CTID" -- env \
   REPO_URL="$REPO_URL" \
   REPO_REF="$REPO_REF" \
+  GITHUB_TOKEN="$GITHUB_TOKEN" \
   BOOTSTRAP_ADMINS="$BOOTSTRAP_ADMINS" \
   DB_PASSWORD="$DB_PASSWORD" \
   bash /root/install.sh
