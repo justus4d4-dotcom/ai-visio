@@ -7,6 +7,47 @@ Debian/Ubuntu LXC container on the homeserver.
 > The app is intended for your own LAN. Do not expose it to the public internet without
 > a reverse proxy with TLS and additional auth.
 
+## Automated Proxmox deployment (recommended)
+
+Two scripts under [`proxmox/`](proxmox/) automate everything below:
+
+- [`proxmox/create-lxc.sh`](proxmox/create-lxc.sh) — run **on the Proxmox host** (as
+  root). Creates an unprivileged Ubuntu 24.04 LXC, starts it, and runs the provisioning
+  script inside it.
+- [`proxmox/install.sh`](proxmox/install.sh) — the in-container provisioning script
+  (installs deps, PostgreSQL, backend, frontend, and systemd units). It is invoked
+  automatically by `create-lxc.sh`, but can also be run by hand inside an existing
+  container.
+
+```bash
+# On the Proxmox host
+cd /path/to/ai-visio/deploy/proxmox
+BOOTSTRAP_ADMINS=you@example.com ./create-lxc.sh
+```
+
+Common overrides (all optional env vars):
+
+| Variable            | Default                          | Purpose                                  |
+| ------------------- | -------------------------------- | ---------------------------------------- |
+| `CTID`              | `110`                            | Container ID                             |
+| `HOSTNAME`          | `ai-visio`                       | Container hostname                       |
+| `CORES` / `MEMORY`  | `2` / `2048`                     | CPU cores / RAM (MB)                     |
+| `DISK_GB`           | `8`                              | Root disk size                           |
+| `STORAGE`           | `local-lvm`                      | Proxmox storage for the rootfs           |
+| `BRIDGE`            | `vmbr0`                          | Network bridge                           |
+| `IPCONFIG`          | `ip=dhcp`                        | e.g. `ip=192.0.2.10/24,gw=192.0.2.10` |
+| `REPO_URL`/`REPO_REF` | GitHub repo / `main`           | Source to deploy                         |
+| `BOOTSTRAP_ADMINS`  | *(empty)*                        | Comma-separated admin emails             |
+| `DB_PASSWORD`       | *(auto-generated)*               | PostgreSQL password                      |
+
+`install.sh` auto-generates `AUTH_SECRET`, `ENCRYPTION_KEY`, and (if unset) the DB
+password, writing them to `/opt/ai-visio/backend/.env` (mode `0600`). It bakes the
+container's primary IP into `NEXT_PUBLIC_API_URL` / `FRONTEND_ORIGINS`; override with
+`API_URL` and `FRONTEND_ORIGINS` if you front the app with a reverse proxy or DNS name.
+
+The manual steps below document what these scripts do, in case you want to run them
+by hand or adapt them to another host.
+
 ## 1. LXC container
 
 Create an unprivileged Debian 12 / Ubuntu 24.04 container (Proxmox example):

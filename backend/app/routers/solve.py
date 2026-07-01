@@ -1,20 +1,23 @@
 """M2 solve loop (Gemini): image -> Gemini image understanding -> answer.
 
-The same image is never sent to Gemini twice: each frame is hashed (sha256) and the
-result is cached. A duplicate frame returns the cached answer with cached=True and
-makes no API call (keeps cost low).
+Every frame the client sends is solved by the LLM. The frontend already suppresses
+re-solving the same on-screen question (it only calls /api/solve once the frame's
+perceptual hash has changed past a threshold), so the backend does not do its own
+perceptual dedup: an 8x8 average hash cannot tell two differently-worded questions
+apart when they share the same layout, which previously caused new questions to be
+answered from a stale cache.
 """
 
 from __future__ import annotations
 
-import hashlib
+import io
 import json
 import logging
 import time
-from collections import OrderedDict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from google.genai import errors as genai_errors
+from PIL import Image
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -27,23 +30,23 @@ router = APIRouter(prefix="/api", tags=["solve"])
 
 MAX_IMAGE_BYTES = 20 * 1024 * 1024  # Gemini inline limit
 
-# Simple in-memory dedup cache: image sha256 -> SolveResult. Capped to bound memory.
-_CACHE: "OrderedDict[str, SolveResult]" = OrderedDict()
-_CACHE_MAX = 500
 
+def _phash(data: bytes) -> int:
+    """8x8 grayscale average hash of the frame, as a 64-bit int (0 on decode failure).
 
-def _cache_get(key: str) -> SolveResult | None:
-    if key in _CACHE:
-        _CACHE.move_to_end(key)
-        return _CACHE[key]
-    return None
-
-
-def _cache_put(key: str, value: SolveResult) -> None:
-    _CACHE[key] = value
-    _CACHE.move_to_end(key)
-    while len(_CACHE) > _CACHE_MAX:
-        _CACHE.popitem(last=False)
+    Only used to derive a stable digest for the history row's ocr_hash column.
+    """
+    try:
+        img = Image.open(io.BytesIO(data)).convert("L").resize((8, 8), Image.LANCZOS)
+    except Exception:  # noqa: BLE001 - unreadable bytes: fall back to a zero digest
+        return 0
+    pixels = list(img.getdata())
+    avg = sum(pixels) / len(pixels)
+    bits = 0
+    for i, p in enumerate(pixels):
+        if p >= avg:
+            bits |= 1 << i
+    return bits
 
 
 @router.post("/solve", response_model=SolveResult)
@@ -63,18 +66,9 @@ async def solve(
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image too large")
 
-    # Never send the same image to Gemini twice.
-    digest = hashlib.sha256(data).hexdigest()
-    cached = _cache_get(digest)
-    if cached is not None:
-        hit = cached.model_copy(update={"cached": True})
-        # Record the cache hit (cost 0) so the dashboard reflects requests served
-        # without an API call.
-        try:
-            usage_store.record_usage(db, hit)
-        except Exception:  # noqa: BLE001
-            logging.exception("Failed to record cached usage event")
-        return hit
+    # Digest of the frame, stored on the history row (ocr_hash).
+    ph = _phash(data)
+    digest = f"{ph:016x}"
 
     # If the frame is unreadable, retry with progressively more capable models (up to
     # MAX_SOLVE_ATTEMPTS). Each attempt is a real API call, so it is metered, but an
@@ -98,10 +92,9 @@ async def solve(
 
     result.elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-    # Only cache + persist readable answers. An unreadable frame is not cached (so a
-    # later retry can still succeed) and is never saved to history.
+    # Only persist readable answers. An unreadable frame is never saved to history so a
+    # later retry can still succeed.
     if not gemini.is_unreadable(result):
-        _cache_put(digest, result)
         try:
             history_store.save_answer(db, data, result, digest)
         except Exception:  # noqa: BLE001

@@ -27,6 +27,7 @@ import os
 import socket
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -151,6 +152,9 @@ class Backend:
         self.cfg = cfg
         self.s = requests.Session()
         self.host = socket.gethostname()
+        # Unique per-process id so the backend can tell concurrent agents apart and let
+        # only one of them stream the preview (avoids a flickering screen in the web UI).
+        self.instance = uuid.uuid4().hex
 
     def _url(self, path: str) -> str:
         return f"{self.cfg.backend_url}{path}"
@@ -159,7 +163,7 @@ class Backend:
         """Report we are alive; return True if the UI selected us as the source."""
         r = self.s.post(
             self._url("/api/remote/agent/heartbeat"),
-            json={"host": self.host},
+            json={"host": self.host, "instance": self.instance},
             timeout=5,
         )
         r.raise_for_status()
@@ -169,6 +173,7 @@ class Backend:
         self.s.post(
             self._url("/api/remote/frame"),
             files={"image": ("frame.jpg", jpeg, "image/jpeg")},
+            data={"instance": self.instance},
             timeout=10,
         )
 

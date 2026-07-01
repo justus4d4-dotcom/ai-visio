@@ -18,8 +18,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import uuid
+from collections import OrderedDict
 
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from app.schemas import SolveResult
@@ -45,21 +46,54 @@ _state: dict[str, object] = {
 # the agent never needs the API key.
 _capture: dict[str, object] = {
     "source": "browser",
-    "agent_last_seen": None,  # datetime | None
-    "agent_host": None,       # str | None
-    "frame": None,            # bytes | None — latest screen frame from the agent
+    "frame": None,            # bytes | None — latest screen frame from the owner agent
     "frame_at": None,         # datetime | None
     "frame_ct": "image/jpeg",  # content type of the stored frame
 }
-AGENT_ONLINE_WINDOW = dt.timedelta(seconds=6)
-FRAME_STALE_WINDOW = dt.timedelta(seconds=10)
+
+# Every running agent process reports a unique `instance` id on its heartbeats and frame
+# uploads. We track them here so we can (a) count how many agents are live and (b) accept
+# frames from only ONE of them — the "owner". Without this, two agents on the same Mac
+# overwrite the single shared frame slot ~1 fps apart, which the browser sees as a flicker
+# between their two screens (e.g. one has macOS Screen Recording permission and shows app
+# windows while the other does not and shows only the bare desktop wallpaper).
+_agents: "OrderedDict[str, dict[str, object]]" = OrderedDict()
+
+# Heartbeats arrive every ~2s and frames at ~1 fps. Keep the online window short so a
+# stopped agent clears within a few seconds, and keep the frame-stale window <= the online
+# window so a frozen preview disappears just before the "offline" flag flips.
+AGENT_ONLINE_WINDOW = dt.timedelta(seconds=5)
+FRAME_STALE_WINDOW = dt.timedelta(seconds=4)
 
 
-def _agent_online() -> bool:
-    last = _capture["agent_last_seen"]
-    if not isinstance(last, dt.datetime):
-        return False
-    return (dt.datetime.now(dt.timezone.utc) - last) < AGENT_ONLINE_WINDOW
+def _live_agents() -> list[str]:
+    """Instance ids of agents seen within AGENT_ONLINE_WINDOW (oldest first). Prunes stale."""
+    now = dt.datetime.now(dt.timezone.utc)
+    stale = [
+        iid
+        for iid, meta in _agents.items()
+        if now - meta["last_seen"] >= AGENT_ONLINE_WINDOW  # type: ignore[operator]
+    ]
+    for iid in stale:
+        _agents.pop(iid, None)
+    return list(_agents.keys())
+
+
+def _owner() -> str | None:
+    """The single agent whose frames drive the preview: the oldest still-live instance."""
+    live = _live_agents()
+    return live[0] if live else None
+
+
+def _touch_agent(iid: str, host: str | None) -> None:
+    now = dt.datetime.now(dt.timezone.utc)
+    meta = _agents.get(iid)
+    if meta is None:
+        _agents[iid] = {"last_seen": now, "host": host}
+    else:
+        meta["last_seen"] = now
+        if host:
+            meta["host"] = host
 
 
 def _frame_fresh() -> bool:
@@ -138,10 +172,12 @@ class SourceState(BaseModel):
     agent_online: bool
     agent_host: str | None = None
     frame_ready: bool = False
+    agent_count: int = 0
 
 
 class AgentHeartbeat(BaseModel):
     host: str | None = None
+    instance: str | None = None
 
 
 class HeartbeatResponse(BaseModel):
@@ -152,11 +188,15 @@ class HeartbeatResponse(BaseModel):
 @router.get("/source", response_model=SourceState)
 def get_source() -> SourceState:
     """Current capture source + whether a native agent is alive (for the web UI)."""
+    live = _live_agents()
+    owner = live[0] if live else None
+    host = _agents[owner]["host"] if owner else None
     return SourceState(
         source=str(_capture["source"]),
-        agent_online=_agent_online(),
-        agent_host=_capture["agent_host"],  # type: ignore[arg-type]
+        agent_online=bool(live),
+        agent_host=host,  # type: ignore[arg-type]
         frame_ready=_frame_fresh(),
+        agent_count=len(live),
     )
 
 
@@ -171,28 +211,39 @@ def set_source(update: SourceUpdate) -> SourceState:
 
 @router.post("/agent/heartbeat", response_model=HeartbeatResponse)
 def agent_heartbeat(hb: AgentHeartbeat) -> HeartbeatResponse:
-    """The native agent calls this every few seconds to report it is alive."""
-    _capture["agent_last_seen"] = dt.datetime.now(dt.timezone.utc)
-    if hb.host:
-        _capture["agent_host"] = hb.host
+    """The native agent calls this every few seconds to report it is alive.
+
+    Only the elected *owner* agent is told it is `active`; any extra agents are asked to
+    stand down so they stop streaming frames and never fight over the shared preview.
+    """
+    iid = hb.instance or "default"
+    _touch_agent(iid, hb.host)
     return HeartbeatResponse(
         source=str(_capture["source"]),
-        active=_capture["source"] == "agent",
+        active=_capture["source"] == "agent" and _owner() == iid,
     )
 
 
 @router.post("/frame")
-async def upload_frame(image: UploadFile = File(...)) -> dict[str, object]:
+async def upload_frame(
+    image: UploadFile = File(...),
+    instance: str | None = Form(default=None),
+) -> dict[str, object]:
     """The native agent pushes the latest screen frame here (no API key needed).
 
     The browser fetches this frame with GET /frame and does the Gemini solve using its
-    own BYOK key, so the agent only ever *records* the screen.
+    own BYOK key, so the agent only ever *records* the screen. Frames from non-owner
+    agents are ignored so a second running agent can't flicker the preview.
     """
+    iid = instance or "default"
+    _touch_agent(iid, None)
+    owner = _owner()
+    if owner is not None and iid != owner:
+        return {"ok": True, "ignored": True}
     data = await image.read()
     _capture["frame"] = data
     _capture["frame_ct"] = image.content_type or "image/jpeg"
     _capture["frame_at"] = dt.datetime.now(dt.timezone.utc)
-    _capture["agent_last_seen"] = dt.datetime.now(dt.timezone.utc)
     return {"ok": True, "bytes": len(data)}
 
 

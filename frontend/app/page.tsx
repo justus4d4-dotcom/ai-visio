@@ -49,8 +49,11 @@ export default function Home() {
   // macOS Python agent that streams frames to the backend).
   const [captureSource, setCaptureSource] = useState<"browser" | "agent">("browser");
   const [agentOnline, setAgentOnline] = useState(false);
-  // Bumped on an interval to refresh the agent preview image (cache-busting).
-  const [agentTick, setAgentTick] = useState(0);
+  // Object URL of the latest frame fetched from the agent. Swapped only on a successful
+  // fetch and cleared when frames stop, so the preview never freezes on a stale image.
+  const [agentFrameUrl, setAgentFrameUrl] = useState<string | null>(null);
+  // How many distinct agent processes the backend currently sees (for a duplicate warning).
+  const [agentCount, setAgentCount] = useState(0);
 
   const [remoteStatus, setRemoteStatus] = useState("idle");
   const [deviceCount, setDeviceCount] = useState(0);
@@ -243,19 +246,48 @@ export default function Home() {
         const s = await fetch(`${API_URL}/api/remote/source`).then((r) => r.json());
         setCaptureSource(s.source === "agent" ? "agent" : "browser");
         setAgentOnline(Boolean(s.agent_online));
+        setAgentCount(s.agent_count ?? 0);
       } catch {
         /* ignore */
       }
-    }, 3000);
+    }, 1500);
     return () => clearInterval(id);
   }, []);
 
-  // Refresh the native-agent preview image while it is the selected, online source.
+  // Stream the native-agent preview by fetching frames and swapping the shown image only
+  // on a successful fetch. When the agent stops (frames go stale → 404), clear the image
+  // so the preview shows "no signal" instead of freezing on the last wallpaper frame.
   useEffect(() => {
-    if (captureSource !== "agent" || !agentOnline) return;
-    const id = setInterval(() => setAgentTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [captureSource, agentOnline]);
+    if (captureSource !== "agent") {
+      setAgentFrameUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let currentUrl: string | null = null;
+    const tick = async () => {
+      const blob = await fetchAgentFrame();
+      if (cancelled) return;
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setAgentFrameUrl(url);
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        currentUrl = url;
+      } else {
+        setAgentFrameUrl(null);
+        if (currentUrl) {
+          URL.revokeObjectURL(currentUrl);
+          currentUrl = null;
+        }
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [captureSource]);
 
   // ESP32 remote control: watch for a touch trigger from the device. On a trigger,
   // capture + interpret the current frame, then post the result back so the device can
@@ -284,7 +316,7 @@ export default function Home() {
           await post("status", { status: "solving" });
           const result = await solveNow();
           if (result) {
-            // solveNow() already pushed the answer to the device; just flag success.
+            await post("answer", result);
             setRemoteStatus("done");
           } else {
             await post("status", { status: "error" });
@@ -391,16 +423,18 @@ export default function Home() {
             />
             {/* Native agent: preview the frames it streams to the backend. */}
             {captureSource === "agent" &&
-              (agentOnline ? (
+              (agentFrameUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={`${API_URL}/api/remote/frame?t=${agentTick}`}
+                  src={agentFrameUrl}
                   alt="Native agent screen"
                   className="h-full w-full object-contain"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
-                  Native agent offline — start it to see a preview
+                  {agentOnline
+                    ? "Native agent online — waiting for a frame…"
+                    : "Native agent offline — start it to see a preview"}
                 </div>
               ))}
             {captureSource === "browser" && !capturing && (
@@ -408,16 +442,6 @@ export default function Home() {
                 Start capture to preview the screen
               </div>
             )}
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={solveNow}
-              disabled={!previewOnline || busy}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium hover:bg-green-500 disabled:opacity-40"
-            >
-              {busy ? "Interpreting…" : "Interpret now"}
-            </button>
           </div>
 
           {error && (
@@ -479,6 +503,13 @@ export default function Home() {
                 Native app
               </button>
             </div>
+            {agentCount > 1 && (
+              <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/60 p-2 text-xs text-amber-300">
+                {agentCount} agents are running — stop all but one, or the preview will
+                flicker between their screens. A launchd auto-start and a manual/Raycast
+                start can both be live at once (see agent/README.md).
+              </p>
+            )}
             {captureSource === "browser" &&
               (!capturing ? (
                 <button
