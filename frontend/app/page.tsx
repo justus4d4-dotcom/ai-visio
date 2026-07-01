@@ -356,12 +356,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-6 max-w-6xl mx-auto">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="bg-gradient-to-r from-indigo-400 via-sky-400 to-emerald-400 bg-clip-text text-4xl font-black uppercase tracking-[0.2em] text-transparent drop-shadow-[0_1px_12px_rgba(56,189,248,0.25)]">
-            AI VISIO
-          </h1>
-        </div>
+      <header className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowHistory(true)}
@@ -698,7 +693,26 @@ function AnswerCard({
   }
   const conf = Math.round(result.confidence * 100);
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6">
+    <div
+      onClick={() => {
+        if (canSolve) onSolve();
+      }}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && canSolve) {
+          e.preventDefault();
+          onSolve();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      title={canSolve ? "Tap to run a new interpretation" : undefined}
+      className={
+        "rounded-xl border border-neutral-800 bg-neutral-900 p-6 " +
+        (canSolve
+          ? "cursor-pointer transition hover:border-indigo-500 active:scale-[0.99]"
+          : "")
+      }
+    >
       <div className="flex items-baseline justify-between">
         <span className="text-5xl font-bold tracking-wide text-green-400">
           {result.answer_letters.join(" ") || "—"}
@@ -720,7 +734,7 @@ function AnswerCard({
       {result.reasoning && (
         <p className="mt-3 text-xs text-neutral-400">{result.reasoning}</p>
       )}
-      <details className="mt-4">
+      <details className="mt-4" onClick={(e) => e.stopPropagation()}>
         <summary className="cursor-pointer text-xs text-neutral-500">
           Question · {result.model}
           {result.elapsed_ms ? ` · ${(result.elapsed_ms / 1000).toFixed(1)}s` : ""}
@@ -730,6 +744,11 @@ function AnswerCard({
           {result.question_text}
         </pre>
       </details>
+      {canSolve && (
+        <p className="mt-3 text-center text-[10px] text-neutral-600">
+          Tap anywhere to run a new interpretation
+        </p>
+      )}
     </div>
   );
 }
