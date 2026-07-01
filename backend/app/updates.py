@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import httpx
@@ -29,6 +30,10 @@ from app.schemas import ReleaseInfo, UpdateProgress, UpdateStatus
 _MARKER_DONE = "AI-VISIO-UPDATE: SUCCESS"
 _MARKER_FAIL = "AI-VISIO-UPDATE: FAILED"
 _MARKER_START = "AI-VISIO-UPDATE: START"
+
+# If a "running" update log hasn't been written to for this long, assume the updater
+# died without a terminal marker and report it as failed (so the UI stops spinning).
+_UPDATE_STALE_SECS = 600
 
 # A conservative allowlist for a git ref we are willing to hand to the update script.
 # Matches release tags/branches like "v1.2.3", "release/1.2.3", "1.2.3-rc.1".
@@ -128,6 +133,19 @@ def _progress_state() -> tuple[str, str | None, str]:
         state = "failed"
     else:
         state = "running"
+        # Safety net: if the updater died without a terminal marker (SIGKILL/OOM, or a
+        # process killed by a service restart), the log stops growing. Treat a long-idle
+        # "running" log as a timed-out failure so the UI never spins forever.
+        try:
+            idle = time.time() - log_path.stat().st_mtime
+        except OSError:
+            idle = 0.0
+        if idle > _UPDATE_STALE_SECS:
+            state = "failed"
+            text += (
+                f"\n[updater timed out: no progress for {int(idle)}s — check "
+                "/opt/ai-visio/update.log and `journalctl -u ai-visio-update-*`]"
+            )
     # Only keep the tail so we never ship a huge payload to the browser.
     tail = "\n".join(text.splitlines()[-200:])
     return state, target, tail

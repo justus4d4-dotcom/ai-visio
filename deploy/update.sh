@@ -31,14 +31,40 @@ fi
 
 TARGET_REF="${1:-}"
 
+# Must be root (systemd-run + systemctl below need it).
+[[ "$(id -u)" -eq 0 ]] || { echo "update.sh: must run as root (via sudo)." >&2; exit 1; }
+
+# ── Detach from the caller's cgroup ───────────────────────────────────────
+# The backend spawns this script inside the ai-visio-backend systemd cgroup. Since the
+# script restarts that very service at the end, a plain child would be SIGKILLed by
+# systemd mid-flight, leaving no SUCCESS/FAILED marker (the UI then hangs on
+# "Updating…"). Re-exec once as a transient systemd unit so we run in our own cgroup
+# and always finish, independent of the backend restart.
+if [[ -z "${AI_VISIO_DETACHED:-}" ]] && command -v systemd-run >/dev/null 2>&1; then
+  exec systemd-run --collect --quiet --unit="ai-visio-update-$(date +%s)" \
+    --setenv=AI_VISIO_DETACHED=1 \
+    --setenv=GITHUB_TOKEN="$GITHUB_TOKEN" \
+    --setenv=REPO_URL="$REPO_URL" \
+    --setenv=APP_DIR="$APP_DIR" \
+    --setenv=APP_USER="$APP_USER" \
+    --setenv=UPDATE_LOG="$UPDATE_LOG" \
+    "$0" "$TARGET_REF"
+fi
+
 # Send everything to the log (and stdout) from here on.
 exec > >(tee -a "$UPDATE_LOG") 2>&1
 
 marker() { printf 'AI-VISIO-UPDATE: %s\n' "$*"; }
 log() { printf '\033[1;34m[update]\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31m[update] ERROR:\033[0m %s\n' "$*" >&2; marker "FAILED"; exit 1; }
 
-[[ "$(id -u)" -eq 0 ]] || fail "must run as root (via sudo)."
+# Guarantee exactly one terminal marker on every exit path (except SIGKILL/OOM, which
+# the backend catches via a staleness timeout). Without this a mid-run crash leaves the
+# log at START and the UI spins forever.
+_marked=0
+fail() { printf '\033[1;31m[update] ERROR:\033[0m %s\n' "$*" >&2; _marked=1; marker "FAILED"; exit 1; }
+trap '[[ "$_marked" -eq 1 ]] || marker "FAILED"' EXIT
+trap 'exit 143' TERM INT   # run the EXIT trap on SIGTERM instead of dying silently
+
 [[ -n "$TARGET_REF" ]] || fail "no target ref given."
 # Defence in depth: the backend already validates the ref, but re-check here.
 [[ "$TARGET_REF" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || fail "invalid target ref: $TARGET_REF"
@@ -90,10 +116,10 @@ install -m 0644 "$APP_DIR/deploy/ai-visio-backend.service"  /etc/systemd/system/
 install -m 0644 "$APP_DIR/deploy/ai-visio-frontend.service" /etc/systemd/system/ai-visio-frontend.service
 systemctl daemon-reload
 
+_marked=1
 marker "SUCCESS"
 log "Update to ${TARGET_REF} complete — restarting services…"
-# Restart last. This kills this script's parent (the backend), but because we run in a
-# new session (setsid) the restart still completes. Detach so a backend restart can't
-# interrupt the frontend restart mid-flight.
+# We run as a transient systemd unit (see top), so restarting ai-visio-backend here
+# cannot kill this script — it completes in its own cgroup.
 systemctl restart ai-visio-frontend
 systemctl restart ai-visio-backend
