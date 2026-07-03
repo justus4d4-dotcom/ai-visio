@@ -213,6 +213,55 @@ The backend listens on `:8000`, the frontend on `:3000`. Open
 `http://<container-ip>:3000` from the MacBook, add your Gemini API key in **Settings**,
 and set the ESP32 device IP under **Devices**.
 
+## 6b. Public demo over Cloudflare Tunnel (`visio.example.com`)
+
+For a public demo — and to make the **iPhone camera** capture source work — the app must
+be served over HTTPS: iOS only grants `getUserMedia` (camera) access in a secure context.
+A Cloudflare Tunnel provides that TLS with no self-signed certs, and lets us serve the
+whole app under **one** hostname so there is no CORS or mixed-content to manage.
+
+The tunnel routes **same-origin**: everything under `/api` (including the ESP32 WebSocket
+at `/api/remote/ws`) goes to the FastAPI backend, everything else to Next.js. All frontend
+requests already target `${NEXT_PUBLIC_API_URL}/api/...`, so pointing that base URL at the
+public hostname is enough.
+
+**1. Tunnel ingress.** A ready-made config lives at
+[`cloudflared/config.yml`](cloudflared/config.yml). If you already run `cloudflared` on
+the host, either merge its two `ingress` rules into your existing config, or add a
+**Public Hostname** in the Zero Trust dashboard for a remotely-managed tunnel:
+
+| Path        | Service                  |
+| ----------- | ------------------------ |
+| `/api/*`    | `http://localhost:8000`  |
+| *(default)* | `http://localhost:3000`  |
+
+Point DNS at the tunnel once: `cloudflared tunnel route dns <tunnel> visio.example.com`.
+
+**2. App env must match the public hostname.** Because `NEXT_PUBLIC_API_URL` is baked in
+at build time, rebuild the frontend after changing it:
+
+```bash
+# Backend: allow the public origin (same-origin, but set it explicitly)
+sudo -u aivisio sed -i \
+  's#^FRONTEND_ORIGINS=.*#FRONTEND_ORIGINS=https://visio.example.com#' \
+  /opt/ai-visio/backend/.env
+systemctl restart ai-visio-backend
+
+# Frontend: same-origin API base, then rebuild + restart
+echo 'NEXT_PUBLIC_API_URL=https://visio.example.com' \
+  | sudo -u aivisio tee /opt/ai-visio/frontend/.env.production
+cd /opt/ai-visio/frontend && sudo -u aivisio pnpm build
+systemctl restart ai-visio-frontend
+```
+
+The backend already runs with `--proxy-headers` (see the unit), so it honours Cloudflare's
+`X-Forwarded-Proto`/`-For`. Nothing needs to bind publicly — only `cloudflared` reaches
+`:3000`/`:8000` on localhost.
+
+**3. Use it.** Open `https://visio.example.com` on the desktop and pick the
+**iPhone** capture source; on the phone open `https://visio.example.com/camera`,
+aim at the screen, drag the four corners, and **Start streaming**.
+
 ## 7. Upgrades
 
 ### In-app auto-update (recommended)

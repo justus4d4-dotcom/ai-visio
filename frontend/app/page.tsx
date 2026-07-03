@@ -46,13 +46,17 @@ export default function Home() {
   // Bumped after every successful solve so the recent-answers list refreshes.
   const [historyTick, setHistoryTick] = useState(0);
 
-  // Capture source: "browser" (this Chrome tab's screen share) or "agent" (the native
-  // macOS Python agent that streams frames to the backend). The agent is the default
-  // since it needs no per-tab screen share and survives page reloads.
-  const [captureSource, setCaptureSource] = useState<"browser" | "agent">("agent");
+  // Capture source: "browser" (this Chrome tab's screen share), "agent" (the native
+  // macOS Python agent that streams frames to the backend), or "camera" (an iPhone
+  // pointing at the screen via the /camera page). The agent is the default since it needs
+  // no per-tab screen share and survives page reloads. Both agent and camera push frames
+  // to the backend and are solved here, so only "browser" captures locally.
+  const [captureSource, setCaptureSource] = useState<"browser" | "agent" | "camera">("agent");
   const [agentOnline, setAgentOnline] = useState(false);
-  // Object URL of the latest frame fetched from the agent. Swapped only on a successful
-  // fetch and cleared when frames stop, so the preview never freezes on a stale image.
+  // Whether the iPhone /camera page is currently streaming frames to the backend.
+  const [cameraOnline, setCameraOnline] = useState(false);
+  // Object URL of the latest frame fetched from a remote source (agent or camera). Swapped
+  // only on a successful fetch and cleared when frames stop, so the preview never freezes.
   const [agentFrameUrl, setAgentFrameUrl] = useState<string | null>(null);
   // How many distinct agent processes the backend currently sees (for a duplicate warning).
   const [agentCount, setAgentCount] = useState(0);
@@ -111,11 +115,13 @@ export default function Home() {
     });
   }
 
-  // Fetch the latest screen frame the native agent pushed to the backend.
-  async function fetchAgentFrame(): Promise<Blob | null> {
+  // Fetch the latest frame a remote source pushed to the backend. The endpoint depends on
+  // the active source: the native agent streams to /frame, the iPhone to /camera/frame.
+  async function fetchRemoteFrame(): Promise<Blob | null> {
+    const path = captureSource === "camera" ? "camera/frame" : "frame";
     try {
-      const res = await fetch(`${API_URL}/api/remote/frame`, { cache: "no-store" });
-      // 204 = no fresh agent frame yet (a success, so the console stays quiet).
+      const res = await fetch(`${API_URL}/api/remote/${path}`, { cache: "no-store" });
+      // 204 = no fresh frame yet (a success, so the console stays quiet).
       if (!res.ok || res.status === 204) return null;
       const blob = await res.blob();
       return blob.size > 0 ? blob : null;
@@ -131,15 +137,17 @@ export default function Home() {
       setError("Add your Gemini API key in Settings first.");
       return null;
     }
-    // In "agent" mode the native app streams the screen to the backend; grab the latest
-    // frame from there. Otherwise capture this tab's own screen share.
+    // In "agent"/"camera" mode a remote source streams the screen to the backend; grab the
+    // latest frame from there. In "browser" mode capture this tab's own screen share.
     const blob =
-      captureSource === "agent" ? await fetchAgentFrame() : await grabFrame();
+      captureSource === "browser" ? await grabFrame() : await fetchRemoteFrame();
     if (!blob) {
       setError(
         captureSource === "agent"
           ? "No frame from the native agent yet. Is it running and selected?"
-          : "No frame available. Is capture running?",
+          : captureSource === "camera"
+            ? "No frame from the iPhone yet. Open /camera on the phone and start streaming."
+            : "No frame available. Is capture running?",
       );
       return null;
     }
@@ -170,9 +178,9 @@ export default function Home() {
         /* device may be offline; ignore */
       });
       // Remember what we just solved so auto-detection won't re-solve the same screen.
-      // The hash source depends on the active capture source (video vs agent frame).
+      // The hash source depends on the active capture source (video vs pushed frame).
       const solvedHash =
-        captureSource === "agent"
+        captureSource !== "browser"
           ? await aHashFromBlob(blob)
           : videoRef.current
             ? aHashFromVideo(videoRef.current)
@@ -192,7 +200,8 @@ export default function Home() {
   // changed (vs the last solved frame) AND is stable (vs the previous sample). Works for
   // both capture sources: the browser video stream or the native agent's pushed frames.
   useEffect(() => {
-    const ready = captureSource === "agent" ? agentOnline : capturing;
+    const ready =
+      captureSource === "browser" ? capturing : captureSource === "agent" ? agentOnline : cameraOnline;
     if (!auto || !ready) {
       setAutoStatus("idle");
       return;
@@ -202,8 +211,8 @@ export default function Home() {
       if (busyRef.current) return;
       // Sample the current frame from whichever source is selected.
       let cur: string | null = null;
-      if (captureSource === "agent") {
-        const blob = await fetchAgentFrame();
+      if (captureSource !== "browser") {
+        const blob = await fetchRemoteFrame();
         if (blob) cur = await aHashFromBlob(blob);
       } else if (videoRef.current) {
         cur = aHashFromVideo(videoRef.current);
@@ -225,9 +234,9 @@ export default function Home() {
 
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, capturing, agentOnline, captureSource, intervalSec, cfg]);
+  }, [auto, capturing, agentOnline, cameraOnline, captureSource, intervalSec, cfg]);
 
-  async function selectSource(source: "browser" | "agent") {
+  async function selectSource(source: "browser" | "agent" | "camera") {
     setCaptureSource(source);
     // Switching sources: forget prior frame hashes so auto-detect re-baselines.
     prevHashRef.current = null;
@@ -248,8 +257,9 @@ export default function Home() {
     const id = setInterval(async () => {
       try {
         const s = await fetch(`${API_URL}/api/remote/source`).then((r) => r.json());
-        setCaptureSource(s.source === "agent" ? "agent" : "browser");
+        setCaptureSource(s.source === "agent" ? "agent" : s.source === "camera" ? "camera" : "browser");
         setAgentOnline(Boolean(s.agent_online));
+        setCameraOnline(Boolean(s.camera_online));
         setAgentCount(s.agent_count ?? 0);
       } catch {
         /* ignore */
@@ -262,14 +272,14 @@ export default function Home() {
   // on a successful fetch. When the agent stops (frames go stale → 404), clear the image
   // so the preview shows "no signal" instead of freezing on the last wallpaper frame.
   useEffect(() => {
-    if (captureSource !== "agent") {
+    if (captureSource === "browser") {
       setAgentFrameUrl(null);
       return;
     }
     let cancelled = false;
     let currentUrl: string | null = null;
     const tick = async () => {
-      const blob = await fetchAgentFrame();
+      const blob = await fetchRemoteFrame();
       if (cancelled) return;
       if (blob) {
         const url = URL.createObjectURL(blob);
@@ -300,7 +310,8 @@ export default function Home() {
   useEffect(() => {
     const browserReady = captureSource === "browser" && capturing;
     const agentReady = captureSource === "agent" && agentOnline;
-    if (!browserReady && !agentReady) {
+    const cameraReady = captureSource === "camera" && cameraOnline;
+    if (!browserReady && !agentReady && !cameraReady) {
       setRemoteStatus("idle");
       return;
     }
@@ -337,7 +348,7 @@ export default function Home() {
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capturing, cfg, captureSource, agentOnline]);
+  }, [capturing, cfg, captureSource, agentOnline, cameraOnline]);
 
   // Poll how many ESP32 devices are connected over WebSocket.
   useEffect(() => {
@@ -352,7 +363,8 @@ export default function Home() {
     return () => clearInterval(id);
   }, []);
 
-  const previewOnline = captureSource === "agent" ? agentOnline : capturing;
+  const previewOnline =
+    captureSource === "browser" ? capturing : captureSource === "agent" ? agentOnline : cameraOnline;
 
   return (
     <main className="min-h-screen p-6 max-w-6xl mx-auto">
@@ -423,24 +435,28 @@ export default function Home() {
               ref={videoRef}
               className={
                 "h-full w-full object-contain " +
-                (captureSource === "agent" ? "hidden" : "")
+                (captureSource !== "browser" ? "hidden" : "")
               }
               muted
             />
-            {/* Native agent: preview the frames it streams to the backend. */}
-            {captureSource === "agent" &&
+            {/* Remote sources (native agent / iPhone camera): preview the pushed frames. */}
+            {captureSource !== "browser" &&
               (agentFrameUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={agentFrameUrl}
-                  alt="Native agent screen"
+                  alt={captureSource === "camera" ? "iPhone camera" : "Native agent screen"}
                   className="h-full w-full object-contain"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
-                  {agentOnline
-                    ? "Native agent online — waiting for a frame…"
-                    : "Native agent offline — start it to see a preview"}
+                  {captureSource === "camera"
+                    ? cameraOnline
+                      ? "iPhone streaming — waiting for a frame…"
+                      : "iPhone offline — open /camera on the phone and start streaming"
+                    : agentOnline
+                      ? "Native agent online — waiting for a frame…"
+                      : "Native agent offline — start it to see a preview"}
                 </div>
               ))}
             {captureSource === "browser" && !capturing && (
@@ -473,10 +489,18 @@ export default function Home() {
                 <span
                   className={
                     "inline-block h-2 w-2 rounded-full " +
-                    (agentOnline ? "bg-green-500" : "bg-neutral-600")
+                    ((captureSource === "camera" ? cameraOnline : agentOnline)
+                      ? "bg-green-500"
+                      : "bg-neutral-600")
                   }
                 />
-                {agentOnline ? "agent online" : "agent offline"}
+                {captureSource === "camera"
+                  ? cameraOnline
+                    ? "iPhone online"
+                    : "iPhone offline"
+                  : agentOnline
+                    ? "agent online"
+                    : "agent offline"}
               </span>
             </div>
             <div className="mt-3 flex overflow-hidden rounded-lg border border-neutral-700">
@@ -508,7 +532,30 @@ export default function Home() {
               >
                 Native app
               </button>
+              <button
+                onClick={() => selectSource("camera")}
+                title="Use an iPhone pointed at the screen (open /camera on the phone)"
+                className={
+                  "flex-1 px-3 py-1.5 text-xs " +
+                  (captureSource === "camera"
+                    ? "bg-indigo-600 text-white"
+                    : "hover:bg-neutral-800")
+                }
+              >
+                iPhone
+              </button>
             </div>
+            {captureSource === "camera" && (
+              <p className="mt-3 rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-400">
+                On the iPhone, open{" "}
+                <a href="/camera" className="text-indigo-400 underline">
+                  this site&apos;s <code>/camera</code> page
+                </a>
+                , aim the rear camera at the screen, drag the four dots onto its corners,
+                and tap <span className="text-neutral-200">Start streaming</span>. Requires
+                HTTPS on iOS.
+              </p>
+            )}
             {agentCount > 1 && (
               <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/60 p-2 text-xs text-amber-300">
                 {agentCount} agents are running — stop all but one, or the preview will

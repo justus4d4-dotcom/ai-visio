@@ -1,0 +1,40 @@
+# Cloudflare Tunnel ingress for the AI VISIO demo.
+#
+# Serves the whole app under a single public hostname over Cloudflare's TLS, so the
+# iPhone /camera page gets the secure context iOS requires for the camera — with no
+# self-signed certs. Routing is same-origin: anything under /api (incl. the ESP32
+# WebSocket at /api/remote/ws) goes to the FastAPI backend, everything else to Next.js.
+# Because it's same-origin there is no CORS or mixed-content to worry about.
+#
+# Prerequisites (run once on the server that hosts the app + cloudflared):
+#   cloudflared tunnel login
+#   cloudflared tunnel create ai-visio
+#   cloudflared tunnel route dns ai-visio visio.example.com
+# Then fill in <TUNNEL_ID> below and run:
+#   cloudflared tunnel --config /opt/ai-visio/deploy/cloudflared/config.yml run
+# (or install it as a service: `cloudflared service install`).
+#
+# App env that MUST match this hostname (see deploy/README.md → "Public demo"):
+#   frontend build:  NEXT_PUBLIC_API_URL=https://visio.example.com
+#   backend .env:    FRONTEND_ORIGINS=https://visio.example.com
+
+tunnel: <TUNNEL_ID>
+credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
+
+# Optional niceties:
+#   originRequest:
+#     connectTimeout: 30s
+#     noHappyEyeballs: true
+
+ingress:
+  # Backend API + WebSocket → FastAPI :8000. WebSockets are proxied transparently.
+  - hostname: visio.example.com
+    path: ^/api(/.*)?$
+    service: http://localhost:8000
+
+  # Everything else (pages, /_next assets, /camera) → Next.js :3000.
+  - hostname: visio.example.com
+    service: http://localhost:3000
+
+  # Required catch-all.
+  - service: http_status:404

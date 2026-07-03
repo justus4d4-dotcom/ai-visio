@@ -39,14 +39,28 @@ _state: dict[str, object] = {
 # Which capture source currently answers triggers:
 #   "agent"   — the native macOS Python agent (streams the whole screen) — default
 #   "browser" — the Next.js tab holding a getDisplayMedia share
+#   "camera"  — an iPhone (or any phone) pointing its rear camera at the screen; the
+#               mobile capture page (/camera) streams JPEG frames to the backend
 # Only one source consumes triggers at a time so a frame is never solved twice.
 #
-# In "agent" mode the agent only *records* the screen and pushes frames here; the
-# browser (which holds the BYOK Gemini key) solves the latest frame on a trigger. So
-# the agent never needs the API key.
+# In "agent"/"camera" modes the source only *records* the screen and pushes frames here;
+# the browser (which holds the BYOK Gemini key) solves the latest frame on a trigger. So
+# neither the agent nor the phone ever needs the API key.
+_CAPTURE_SOURCES = ("browser", "agent", "camera")
+
 _capture: dict[str, object] = {
     "source": "agent",
     "frame": None,            # bytes | None — latest screen frame from the owner agent
+    "frame_at": None,         # datetime | None
+    "frame_ct": "image/jpeg",  # content type of the stored frame
+}
+
+# The iPhone camera source keeps its own frame slot, separate from the agent's, so a
+# running native agent and a phone can be swapped without one clobbering the other's
+# preview. The phone already crops/deskews the screen out of its camera view before
+# pushing (see the /camera mobile page), so the backend just relays the JPEG as-is.
+_camera: dict[str, object] = {
+    "frame": None,            # bytes | None — latest cropped screen frame from the phone
     "frame_at": None,         # datetime | None
     "frame_ct": "image/jpeg",  # content type of the stored frame
 }
@@ -101,6 +115,18 @@ def _frame_fresh() -> bool:
     if not isinstance(at, dt.datetime) or not _capture["frame"]:
         return False
     return (dt.datetime.now(dt.timezone.utc) - at) < FRAME_STALE_WINDOW
+
+
+# The phone streams at ~1-2 fps but a hand-held camera can drop frames briefly; give it a
+# slightly longer stale window than the agent so the preview doesn't blink on a hiccup.
+CAMERA_STALE_WINDOW = dt.timedelta(seconds=6)
+
+
+def _camera_fresh() -> bool:
+    at = _camera["frame_at"]
+    if not isinstance(at, dt.datetime) or not _camera["frame"]:
+        return False
+    return (dt.datetime.now(dt.timezone.utc) - at) < CAMERA_STALE_WINDOW
 
 
 class DeviceHub:
@@ -164,7 +190,7 @@ class RemoteState(BaseModel):
 
 
 class SourceUpdate(BaseModel):
-    source: str  # "browser" | "agent"
+    source: str  # "browser" | "agent" | "camera"
 
 
 class SourceState(BaseModel):
@@ -173,6 +199,8 @@ class SourceState(BaseModel):
     agent_host: str | None = None
     frame_ready: bool = False
     agent_count: int = 0
+    camera_online: bool = False
+    camera_frame_ready: bool = False
 
 
 class AgentHeartbeat(BaseModel):
@@ -197,14 +225,19 @@ def get_source() -> SourceState:
         agent_host=host,  # type: ignore[arg-type]
         frame_ready=_frame_fresh(),
         agent_count=len(live),
+        camera_online=_camera_fresh(),
+        camera_frame_ready=_camera_fresh(),
     )
 
 
 @router.post("/source", response_model=SourceState)
 def set_source(update: SourceUpdate) -> SourceState:
-    """Choose which capture source answers triggers: browser tab or native agent."""
-    if update.source not in ("browser", "agent"):
-        raise HTTPException(status_code=422, detail="source must be 'browser' or 'agent'")
+    """Choose which capture source answers triggers: browser tab, native agent, or phone."""
+    if update.source not in _CAPTURE_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"source must be one of {', '.join(_CAPTURE_SOURCES)}",
+        )
     _capture["source"] = update.source
     return get_source()
 
@@ -258,6 +291,33 @@ def get_frame() -> Response:
     return Response(
         content=bytes(_capture["frame"]),  # type: ignore[arg-type]
         media_type=str(_capture["frame_ct"]),
+    )
+
+
+@router.post("/camera/frame")
+async def upload_camera_frame(image: UploadFile = File(...)) -> dict[str, object]:
+    """The phone's /camera page pushes a cropped screen frame here (no API key needed).
+
+    The phone captures its rear camera, lets the user crop/deskew the on-screen area, and
+    streams the resulting JPEG at ~1-2 fps. The browser fetches it with GET /camera/frame
+    and solves with its own BYOK key, so the phone only ever *records* — like the agent.
+    """
+    data = await image.read()
+    _camera["frame"] = data
+    _camera["frame_ct"] = image.content_type or "image/jpeg"
+    _camera["frame_at"] = dt.datetime.now(dt.timezone.utc)
+    return {"ok": True, "bytes": len(data)}
+
+
+@router.get("/camera/frame")
+def get_camera_frame() -> Response:
+    """Return the latest cropped frame the phone pushed (used by the browser to solve)."""
+    if not _camera_fresh():
+        # 204 (not 404) so ~1 fps preview polling stays quiet while no phone streams.
+        return Response(status_code=204)
+    return Response(
+        content=bytes(_camera["frame"]),  # type: ignore[arg-type]
+        media_type=str(_camera["frame_ct"]),
     )
 
 
