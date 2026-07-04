@@ -14,11 +14,14 @@ truststore.inject_into_ssl()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app import auth as auth_mod
 from app.config import settings
 from app.database import engine
 from app.routers import providers, remote, solve
+from app.routers import auth as auth_router
 from app.routers import history, usage
 from app.routers import updates
 
@@ -32,12 +35,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Paths reachable without a session: the OAuth handshake itself and unauthenticated
+# health/info probes. Everything else under /api requires a valid Google session (or the
+# device token) once sign-in is configured.
+_AUTH_EXEMPT_PREFIXES = ("/api/auth/", "/api/info", "/health")
+
+
+@app.middleware("http")
+async def require_login(request, call_next):
+    """Gate every /api route behind Google sign-in when auth is configured."""
+    path = request.url.path
+    if (
+        settings.auth_configured
+        and request.method != "OPTIONS"
+        and path.startswith("/api/")
+        and not path.startswith(_AUTH_EXEMPT_PREFIXES)
+        and not auth_mod.request_is_authorized(request)
+    ):
+        return JSONResponse({"detail": "Authentication required."}, status_code=401)
+    return await call_next(request)
+
+
 app.include_router(solve.router)
 app.include_router(providers.router)
 app.include_router(remote.router)
 app.include_router(history.router)
 app.include_router(usage.router)
 app.include_router(updates.router)
+app.include_router(auth_router.router)
 
 
 @app.get("/health")

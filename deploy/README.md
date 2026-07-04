@@ -262,6 +262,49 @@ The backend already runs with `--proxy-headers` (see the unit), so it honours Cl
 **iPhone** capture source; on the phone open `https://visio.example.com/camera`,
 aim at the screen, drag the four corners, and **Start streaming**.
 
+## 6c. Google sign-in (protect the public deployment)
+
+Once the app is reachable at a public hostname, gate it behind Google sign-in. When
+`GOOGLE_CLIENT_ID` **and** `GOOGLE_CLIENT_SECRET` are set, the backend requires a valid,
+allowed Google account for every `/api` route (except the auth handshake and `/health`);
+the frontend shows a "Sign in with Google" screen until you do. Left unset, the app stays
+open (local dev).
+
+**1. Create OAuth credentials** in Google Cloud Console → *APIs & Services → Credentials →
+Create Credentials → OAuth client ID → Web application*:
+
+- **Authorized redirect URI:** `https://visio.example.com/api/auth/callback`
+- Copy the **Client ID** and **Client secret**.
+
+**2. Configure the backend** (`/opt/ai-visio/backend/.env`, mode 0600):
+
+```bash
+pct exec 110 -- bash -c 'cat >> /opt/ai-visio/backend/.env <<ENV
+GOOGLE_CLIENT_ID=697441197790-0vfsbobh3pdn6ll342jkm9eg6lt4759k.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=paste-the-secret-here
+PUBLIC_BASE_URL=https://visio.example.com
+ALLOWED_EMAILS=you@example.com,guest@example.com
+DEVICE_TOKEN=$(python3 -c "import secrets;print(secrets.token_urlsafe(32))")
+ENV'
+pct exec 110 -- systemctl restart ai-visio-backend
+```
+
+- `ALLOWED_EMAILS` — comma-separated allowlist. **Empty means any Google account can sign
+  in**, so set it to lock the demo to specific people.
+- `PUBLIC_BASE_URL` must match the hostname used for the redirect URI.
+- The session is a 12h JWT signed with `AUTH_SECRET` in an HttpOnly/Secure/SameSite=Lax
+  cookie. Same-origin behind the tunnel, so it rides along with the frontend's `/api` calls.
+
+**3. Non-browser clients (native agent, ESP32)** can't do OAuth, so they authenticate with
+the shared `DEVICE_TOKEN` (sent as the `X-Device-Token` header, or `?token=`):
+
+- **Native agent:** add `device_token = "<same DEVICE_TOKEN>"` to its `config.toml`
+  (see `agent/config.example.toml`).
+- **ESP32:** include the token on its `/api/remote/*` HTTP calls. The WebSocket path
+  (`/api/remote/ws`) is not gated by the HTTP auth middleware, so a device that triggers
+  and reads answers over the WebSocket keeps working unchanged. If the ESP32 is only used
+  on the LAN, you can also point it at the container IP directly.
+
 ## 7. Upgrades
 
 ### In-app auto-update (recommended)

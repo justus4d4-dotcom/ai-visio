@@ -17,6 +17,24 @@ class Settings(BaseSettings):
     ocr_lang: str = "eng"
     frame_diff_threshold: int = 8
 
+    # ── Google sign-in (protects the public deployment) ─────────────────────────
+    # Google OAuth 2.0 web client. When BOTH id and secret are set, every /api route
+    # (except the auth handshake + health) requires a signed-in, allowed Google account.
+    # Left empty (local dev) the app stays open. Secrets come from backend/.env.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Public HTTPS origin the browser reaches, used to build the OAuth redirect URI as
+    # "<public_base_url>/api/auth/callback" (must be registered in the Google console).
+    public_base_url: str = ""
+    # Comma-separated allowlist of Google emails permitted to sign in. Empty = allow any
+    # Google account that completes login (less strict — set this to lock the demo down).
+    allowed_emails: str = ""
+    # Shared secret for non-browser clients (native agent, ESP32) that can't do OAuth.
+    # Sent as the "X-Device-Token" header (or "?token="); bypasses the session check.
+    device_token: str = ""
+    # Session cookie lifetime (seconds); default 12h.
+    session_ttl_seconds: int = 43200
+
     # ── Self-update (used by the "Update" section in the frontend settings) ──────
     # GitHub repo the deployment tracks, as "owner/name".
     github_repo: str = "justus4d4-dotcom/ai-visio"
@@ -39,6 +57,15 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.frontend_origins.split(",") if o.strip()]
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
+
+    @property
+    def auth_configured(self) -> bool:
+        """True when Google sign-in is fully configured and should be enforced."""
+        return bool(self.google_client_id and self.google_client_secret)
 
 
 @lru_cache

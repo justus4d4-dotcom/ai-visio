@@ -23,3 +23,8 @@ fps = 1.0
 auto = false
 interval = 3.0
 
+# Device token — required only when the backend enforces Google sign-in. Must match
+# DEVICE_TOKEN in the backend .env. Sent as the X-Device-Token header so the agent
+# (which can't do OAuth) is allowed to stream frames.
+# device_token = "paste-the-backend-DEVICE_TOKEN-here"
+

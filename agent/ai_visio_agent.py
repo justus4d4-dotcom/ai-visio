@@ -64,6 +64,7 @@ class Config:
     heartbeat_interval: float = 2.0
     auto: bool = False         # auto-detect screen changes and fire a trigger
     interval: float = 3.0      # seconds between auto-detect samples
+    device_token: str = ""     # sent as X-Device-Token when the backend requires auth
     verbose: bool = False
 
 
@@ -101,6 +102,7 @@ def load_config(args: argparse.Namespace) -> Config:
         heartbeat_interval=float(pick("heartbeat_interval", 2.0)),
         auto=bool(pick("auto", False)),
         interval=float(pick("interval", 3.0)),
+        device_token=str(pick("device_token", "") or ""),
         verbose=bool(getattr(args, "verbose", False)),
     )
 
@@ -151,6 +153,10 @@ class Backend:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.s = requests.Session()
+        # When the backend enforces Google sign-in, the agent (which can't do OAuth)
+        # authenticates with a shared device token instead.
+        if cfg.device_token:
+            self.s.headers["X-Device-Token"] = cfg.device_token
         self.host = socket.gethostname()
         # Unique per-process id so the backend can tell concurrent agents apart and let
         # only one of them stream the preview (avoids a flickering screen in the web UI).
