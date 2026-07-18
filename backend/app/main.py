@@ -22,7 +22,7 @@ from app.config import settings
 from app.database import engine
 from app.routers import providers, remote, solve
 from app.routers import auth as auth_router
-from app.routers import history, usage
+from app.routers import devices, history, usage
 from app.routers import updates
 
 app = FastAPI(title="AI Image Interpreter backend", version="0.1.0")
@@ -36,9 +36,16 @@ app.add_middleware(
 )
 
 # Paths reachable without a session: the OAuth handshake itself and unauthenticated
-# health/info probes. Everything else under /api requires a valid Google session (or the
-# device token) once sign-in is configured.
-_AUTH_EXEMPT_PREFIXES = ("/api/auth/", "/api/info", "/health")
+# health/info probes. The firmware-image download is also exempt because the ESP32 that
+# pulls it during an OTA cannot perform the browser OAuth flow (it only serves a public
+# firmware blob on the LAN). Everything else under /api requires a valid Google session
+# (or the device token) once sign-in is configured.
+_AUTH_EXEMPT_PREFIXES = (
+    "/api/auth/",
+    "/api/info",
+    "/health",
+    "/api/devices/firmware/binary",
+)
 
 
 @app.middleware("http")
@@ -62,6 +69,7 @@ app.include_router(remote.router)
 app.include_router(history.router)
 app.include_router(usage.router)
 app.include_router(updates.router)
+app.include_router(devices.router)
 app.include_router(auth_router.router)
 
 

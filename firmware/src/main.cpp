@@ -22,6 +22,7 @@
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <HTTPUpdate.h>
 
 #include "lgfx_config.h"
 
@@ -113,6 +114,11 @@ static uint32_t g_caseCaptureAt = 0;     // millis() when the capture was reques
 static uint32_t g_caseFlashAt = 0;       // millis() of the last success/failure flash
 static bool g_caseLastOk = true;         // outcome of the last capture (for the flash)
 static const uint32_t CASE_CAPTURE_TIMEOUT_MS = 12000;
+
+// Firmware OTA (HTTP): set when the backend broadcasts {"type":"ota"}. The blocking
+// download + flash runs from loop() (never inside the WebSocket receive callback).
+static bool g_otaRequested = false;
+static String g_otaUrl;
 
 // ---------------------------------------------------------------------------
 // Colours (RGB565)
@@ -516,6 +522,17 @@ static void handleWsMessage(const uint8_t* payload, size_t len) {
     return;
   }
 
+  // OTA: the backend told every device to pull + flash new firmware. Defer the blocking
+  // download to loop() so it does not run inside this WebSocket receive callback.
+  if (strcmp(type, "ota") == 0) {
+    const char* path = doc["path"] | "";
+    if (strlen(path) > 0) {
+      g_otaUrl = g_serverUrl + String(path);
+      g_otaRequested = true;
+    }
+    return;
+  }
+
   if (strcmp(status, "error") == 0) {
     g_errorMsg = "solve failed";
     g_state = UiState::Error;
@@ -584,6 +601,25 @@ static bool wsTrigger() {
 static bool wsCaptureScenario() {
   if (!g_wsConnected) return false;
   return g_ws.sendTXT("{\"type\":\"capture_scenario\"}");
+}
+
+// Download + flash firmware from the backend over HTTP (OTA). Blocking; on success the
+// HTTPUpdate library verifies the x-MD5 header and reboots into the new image.
+static void performHttpOta(const String& url) {
+  renderOtaProgress(0);
+  if (g_wsConnected) g_ws.sendTXT("{\"type\":\"ota_status\",\"status\":\"updating\"}");
+  WiFiClient client;
+  httpUpdate.rebootOnUpdate(true);
+  httpUpdate.onProgress([](int cur, int total) {
+    renderOtaProgress(total > 0 ? (int)((int64_t)cur * 100 / total) : 0);
+  });
+  t_httpUpdate_return ret = httpUpdate.update(client, url);
+  if (ret == HTTP_UPDATE_FAILED) {
+    if (g_wsConnected) g_ws.sendTXT("{\"type\":\"ota_status\",\"status\":\"failed\"}");
+    g_errorMsg = "update failed";
+    g_state = UiState::Error;
+  }
+  // HTTP_UPDATE_OK reboots automatically (rebootOnUpdate=true).
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +920,13 @@ void loop() {
   // Service OTA update requests (PlatformIO espota / Arduino IDE network port).
   ArduinoOTA.handle();
   g_ws.loop();
+
+  // A firmware OTA was pushed from the settings page: download + flash now (blocking).
+  if (g_otaRequested) {
+    g_otaRequested = false;
+    performHttpOta(g_otaUrl);
+    return;
+  }
 
   bool tapped = false;
   bool swipeDown = false;

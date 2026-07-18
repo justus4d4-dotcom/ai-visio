@@ -163,6 +163,20 @@ class DeviceHub:
             except Exception:  # noqa: BLE001 - drop dead sockets
                 self.disconnect(cid)
 
+    def set_ota_status(self, cid: str, status: str, progress: int | None = None) -> None:
+        """Record the OTA state a device reported (shown in the settings OTA panel)."""
+        meta = self._meta.get(cid)
+        if meta is not None:
+            meta["ota_status"] = status
+            if progress is not None:
+                meta["ota_progress"] = progress
+
+    def reset_ota(self, status: str) -> None:
+        """Mark every connected device with an OTA status (called when an OTA starts)."""
+        for meta in self._meta.values():
+            meta["ota_status"] = status
+            meta.pop("ota_progress", None)
+
     @property
     def count(self) -> int:
         return len(self._conns)
@@ -436,6 +450,12 @@ async def device_ws(ws: WebSocket) -> None:
                 _state["trigger_id"] = str(uuid.uuid4())
                 _state["action"] = "scenario"
                 _state["status"] = "requested"
+            elif msg.get("type") == "ota_status":
+                # The device reports its firmware-update progress so the settings OTA
+                # panel can show it (e.g. "updating" → reboot → reconnect).
+                hub.set_ota_status(
+                    cid, str(msg.get("status") or "unknown"), msg.get("progress")
+                )
     except WebSocketDisconnect:
         hub.disconnect(cid)
     except Exception:  # noqa: BLE001

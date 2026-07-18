@@ -15,6 +15,7 @@ import Modal from "@/components/Modal";
 import HistoryView from "@/components/HistoryView";
 import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
+import DeviceOtaView from "@/components/DeviceOtaView";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -529,6 +530,12 @@ export default function Home() {
             <h3 className="text-sm font-semibold text-neutral-200">Update</h3>
             <div className="mt-3">
               <UpdateView />
+            </div>
+          </div>
+          <div className="mt-8 border-t border-neutral-800 pt-6">
+            <h3 className="text-sm font-semibold text-neutral-200">Devices</h3>
+            <div className="mt-3">
+              <DeviceOtaView />
             </div>
           </div>
         </Modal>

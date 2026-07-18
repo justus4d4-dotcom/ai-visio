@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     history_retention_days: int = 30
     history_max_rows: int = 2000
 
+    # ── ESP32 firmware / OTA ────────────────────────────────────────────────────
+    # Where an uploaded ESP32 firmware image (.bin) is stored so connected devices can
+    # pull it over HTTP when an OTA is triggered from the settings page. Relative paths
+    # resolve against the backend's working directory.
+    firmware_dir: str = "data/firmware"
+
     # ── Google sign-in (protects the public deployment) ─────────────────────────
     # Google OAuth 2.0 web client. When BOTH id and secret are set, every /api route
     # (except the auth handshake + health) requires a signed-in, allowed Google account.
