@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DEFAULT_CONFIG,
   DEFAULT_GEMINI_MODELS,
@@ -29,6 +30,24 @@ const CASE_STORAGE_KEY = "aiexams.case";
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const router = useRouter();
+
+  // On a phone, jump straight to the /camera page (the phone's job is to be a capture
+  // source) unless the user explicitly chose the full app via the camera page's "App"
+  // button (which sets the sessionStorage flag).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let prefersFull = false;
+    try {
+      prefersFull = sessionStorage.getItem("ai_visio_prefer_full") === "1";
+    } catch {
+      /* ignore */
+    }
+    const isMobile =
+      window.matchMedia("(max-width: 767px)").matches &&
+      window.matchMedia("(pointer: coarse)").matches;
+    if (isMobile && !prefersFull) router.replace("/camera");
+  }, [router]);
 
   const [capturing, setCapturing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -456,7 +475,7 @@ export default function Home() {
     captureSource === "browser" ? capturing : captureSource === "agent" ? agentOnline : cameraOnline;
 
   return (
-    <main className="min-h-screen p-6 max-w-6xl mx-auto">
+    <main className="min-h-screen p-4 sm:p-6 max-w-6xl mx-auto">
       <header className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <button

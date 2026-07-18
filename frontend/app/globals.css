@@ -6,6 +6,24 @@
   color-scheme: dark;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   @apply bg-neutral-950 text-neutral-100;
+  /* Mobile ergonomics: no rubber-band scroll chaining, no tap flash, no accidental text
+     selection while dragging the camera corner handles. */
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Safe-area helpers for full-bleed layouts (camera page) on notched phones. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
