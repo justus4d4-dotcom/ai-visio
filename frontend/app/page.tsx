@@ -108,6 +108,13 @@ export default function Home() {
   const [caseBusy, setCaseBusy] = useState(false);
   const [showCaseContent, setShowCaseContent] = useState(false);
   const caseScenariosRef = useRef<string[]>([]);
+  // Auto-save provider settings shortly after any change (no manual Save button).
+  const cfgSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handleCfgChange(next: ProviderConfig) {
+    setCfg(next);
+    if (cfgSaveRef.current) clearTimeout(cfgSaveRef.current);
+    cfgSaveRef.current = setTimeout(() => saveProvider(next), 600);
+  }
 
   useEffect(() => {
     // Account is the source of truth; show the cached settings instantly, then refresh
@@ -544,17 +551,9 @@ export default function Home() {
       {showSettings && (
         <Drawer
           title="Settings"
-          subtitle="Google Gemini (BYOK)"
           onClose={() => setShowSettings(false)}
         >
-          <SettingsPanel
-            cfg={cfg}
-            onChange={setCfg}
-            onSave={() => {
-              saveProvider(cfg);
-              setShowSettings(false);
-            }}
-          />
+          <SettingsPanel cfg={cfg} onChange={handleCfgChange} />
           <div className="mt-8 border-t border-line pt-6">
             <h3 className="text-sm font-semibold text-ink">Update</h3>
             <div className="mt-3">
@@ -1055,11 +1054,9 @@ function RecentAnswers({
 function SettingsPanel({
   cfg,
   onChange,
-  onSave,
 }: {
   cfg: ProviderConfig;
   onChange: (c: ProviderConfig) => void;
-  onSave: () => void;
 }) {
   const set = (patch: Partial<ProviderConfig>) => onChange({ ...cfg, ...patch });
 
@@ -1068,7 +1065,6 @@ function SettingsPanel({
   const [testing, setTesting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [testOk, setTestOk] = useState<boolean | null>(null);
-  const [testMsg, setTestMsg] = useState<string | null>(null);
 
   // The built-in solver prompt, fetched so the field can show it for editing. When the
   // user leaves it unchanged we keep cfg.system_prompt empty so the backend always uses
@@ -1084,7 +1080,6 @@ function SettingsPanel({
   async function testConnection() {
     setTesting(true);
     setTestOk(null);
-    setTestMsg(null);
     try {
       const res = await fetch(`${API_URL}/api/providers/test`, {
         method: "POST",
@@ -1097,10 +1092,8 @@ function SettingsPanel({
       setModels(list);
       saveCachedModels(list);
       setTestOk(true);
-      setTestMsg(`Connected — ${list.length} models available.`);
-    } catch (e) {
+    } catch {
       setTestOk(false);
-      setTestMsg(e instanceof Error ? e.message : "Connection failed.");
     } finally {
       setTesting(false);
     }
@@ -1179,28 +1172,63 @@ function SettingsPanel({
 
         <label className="text-xs">
           <span className="flex items-center justify-between">
-            Model
-            <button
-              type="button"
-              onClick={refreshModels}
-              disabled={!cfg.api_key || refreshing}
-              title="Refresh available models"
-              aria-label="Refresh available models"
-              className="text-ink-muted hover:text-ink disabled:opacity-40"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className={"h-3.5 w-3.5 " + (refreshing ? "animate-spin" : "")}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <span className="flex items-center gap-2">
+              Model
+              {testOk !== null && (
+                <span
+                  className={
+                    "text-[10px] font-medium " +
+                    (testOk
+                      ? "text-emerald-600 dark:text-emerald-300"
+                      : "text-red-600 dark:text-red-300")
+                  }
+                >
+                  {testOk ? "Successful" : "Unsuccessful"}
+                </span>
+              )}
+            </span>
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={testConnection}
+                disabled={!cfg.api_key || testing}
+                title="Test connection"
+                aria-label="Test connection"
+                className="text-ink-muted hover:text-ink disabled:opacity-40"
               >
-                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                <path d="M21 3v6h-6" />
-              </svg>
-            </button>
+                {testing ? (
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 3h6M10 3v5.5L5.4 17A2 2 0 0 0 7.2 20h9.6a2 2 0 0 0 1.8-3L14 8.5V3" />
+                    <path d="M8.5 14h7" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={refreshModels}
+                disabled={!cfg.api_key || refreshing}
+                title="Refresh available models"
+                aria-label="Refresh available models"
+                className="text-ink-muted hover:text-ink disabled:opacity-40"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className={"h-3.5 w-3.5 " + (refreshing ? "animate-spin" : "")}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+              </button>
+            </span>
           </span>
           <select
             value={sortedModels.includes(cfg.model) ? cfg.model : CUSTOM}
@@ -1381,37 +1409,6 @@ function SettingsPanel({
           </label>
         </div>
       </details>
-
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={onSave}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90"
-        >
-          Save
-        </button>
-        <button
-          onClick={testConnection}
-          disabled={testing || !cfg.api_key}
-          title="Test connection"
-          aria-label="Test connection"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line hover:bg-panel-2 disabled:opacity-40"
-        >
-          {testing ? (
-            <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin text-ink-muted" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 2 3 14h7l-1 8 10-12h-7z" />
-            </svg>
-          )}
-        </button>
-        {testMsg && (
-          <span className={"text-xs " + (testOk ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
-            {testMsg}
-          </span>
-        )}
-      </div>
     </div>
   );
 }

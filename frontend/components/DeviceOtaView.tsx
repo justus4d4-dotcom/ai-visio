@@ -47,7 +47,6 @@ export default function DeviceOtaView() {
   const [latest, setLatest] = useState<FirmwareLatest | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [count, setCount] = useState(0);
-  const [version, setVersion] = useState("");
   const [uploading, setUploading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [pushing, setPushing] = useState(false);
@@ -182,7 +181,7 @@ export default function DeviceOtaView() {
     try {
       const form = new FormData();
       form.append("firmware", file, file.name);
-      form.append("version", version.trim());
+      form.append("version", "");
       const res = await fetch(`${API_URL}/api/devices/firmware`, { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail ?? `Upload failed (${res.status})`);
@@ -225,7 +224,7 @@ export default function DeviceOtaView() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-ink-muted">Display firmware (OTA)</p>
+        <p className="text-sm text-ink-muted">Firmware</p>
         <span
           className={
             "rounded px-2 py-0.5 text-xs " +
@@ -306,17 +305,7 @@ export default function DeviceOtaView() {
           </p>
         )}
 
-        <p className="mt-4 text-xs text-ink-muted">Or upload a .bin manually (alternative):</p>
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="text-ink-muted">Version label (optional)</span>
-            <input
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder="e.g. v0.6.0"
-              className="w-36 rounded border border-line bg-app p-2 text-sm"
-            />
-          </label>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
           <input ref={fileRef} type="file" accept=".bin" onChange={onFile} className="hidden" />
           <button
             onClick={() => fileRef.current?.click()}
@@ -495,10 +484,6 @@ export default function DeviceOtaView() {
         </ul>
       )}
 
-      <p className="mt-3 text-xs text-ink-muted">
-        Devices must be flashed once over USB first; afterwards firmware can be pushed here.
-        Each display downloads the image over your LAN and reboots into it.
-      </p>
       {devices.some((d) => d.ota_status === "no_response") && (
         <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           A device didn&apos;t respond to the update. That usually means it is still running
