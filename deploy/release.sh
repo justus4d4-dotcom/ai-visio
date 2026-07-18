@@ -66,6 +66,32 @@ body="$(printf '%s' "$resp" | sed '$d')"
 if [[ "$code" == "201" ]]; then
   url="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("html_url",""))')"
   echo "✓ Released ${next}: ${url}"
+
+  # Attach the ESP32 firmware image so the in-app "latest firmware from GitHub" OTA can
+  # fetch it. Best-effort: needs PlatformIO on PATH; a missing/broken build never fails
+  # the release (the firmware can be built + attached later, or uploaded manually).
+  upload_url="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("upload_url","").split("{")[0])')"
+  fw_bin="$ROOT/firmware/.pio/build/waveshare-s3-round/firmware.bin"
+  if command -v pio >/dev/null 2>&1; then
+    echo "Building ESP32 firmware to attach…"
+    if pio run -d "$ROOT/firmware" >/tmp/ai-visio-fw-build.log 2>&1; then
+      if [[ -f "$fw_bin" && -n "$upload_url" ]]; then
+        acode="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Content-Type: application/octet-stream" \
+          "${upload_url}?name=ai-visio-display-${next}.bin" --data-binary @"$fw_bin")"
+        if [[ "$acode" == "201" ]]; then
+          echo "✓ Attached firmware asset ai-visio-display-${next}.bin"
+        else
+          echo "! Firmware asset upload failed (HTTP ${acode}); attach it manually if needed." >&2
+        fi
+      fi
+    else
+      echo "! Firmware build failed (see /tmp/ai-visio-fw-build.log); released without a firmware asset." >&2
+    fi
+  else
+    echo "! PlatformIO (pio) not found — released without a firmware asset. Build firmware/ and attach ai-visio-display-${next}.bin to enable GitHub OTA." >&2
+  fi
 else
   echo "✗ GitHub API error (HTTP ${code}):" >&2
   printf '%s' "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("message","")); [print(" -", e.get("code"), e.get("field")) for e in d.get("errors",[])]' >&2 || printf '%s\n' "$body" >&2

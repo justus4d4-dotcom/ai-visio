@@ -16,6 +16,7 @@ type Firmware = {
   md5?: string | null;
   size?: number | null;
   uploaded_at?: string | null;
+  source?: string | null;
 };
 
 type Device = {
@@ -26,15 +27,26 @@ type Device = {
   ota_progress?: number;
 };
 
+type FirmwareLatest = {
+  available: boolean;
+  tag?: string | null;
+  name?: string | null;
+  size?: number | null;
+  updated_at?: string | null;
+  detail?: string | null;
+};
+
 const fmtBytes = (n?: number | null) =>
   n == null ? "" : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(2)} MB`;
 
 export default function DeviceOtaView() {
   const [firmware, setFirmware] = useState<Firmware | null>(null);
+  const [latest, setLatest] = useState<FirmwareLatest | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [count, setCount] = useState(0);
   const [version, setVersion] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -44,6 +56,15 @@ export default function DeviceOtaView() {
     try {
       const res = await fetch(`${API_URL}/api/devices/firmware`, { cache: "no-store" });
       if (res.ok) setFirmware(await res.json());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const loadLatest = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/devices/firmware/latest`, { cache: "no-store" });
+      if (res.ok) setLatest(await res.json());
     } catch {
       /* ignore */
     }
@@ -64,10 +85,28 @@ export default function DeviceOtaView() {
 
   useEffect(() => {
     loadFirmware();
+    loadLatest();
     loadDevices();
     const id = setInterval(loadDevices, 3000);
     return () => clearInterval(id);
-  }, [loadFirmware, loadDevices]);
+  }, [loadFirmware, loadLatest, loadDevices]);
+
+  async function useLatest() {
+    setFetching(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`${API_URL}/api/devices/firmware/fetch`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail ?? `Failed (${res.status})`);
+      setFirmware(data);
+      setNotice(`Loaded ${data.version ?? data.filename} from GitHub.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not fetch firmware from GitHub.");
+    } finally {
+      setFetching(false);
+    }
+  }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -142,29 +181,63 @@ export default function DeviceOtaView() {
       )}
 
       <section className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-        <p className="text-xs uppercase tracking-wide text-neutral-500">Stored firmware</p>
+        {/* Suggested firmware = the latest GitHub release asset. */}
+        {latest?.available ? (
+          <div className="mb-3 rounded-lg border border-indigo-900/70 bg-indigo-950/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm">
+                <span className="text-neutral-400">Latest on GitHub: </span>
+                <span className="font-mono text-neutral-100">{latest.tag}</span>
+                <span className="ml-2 text-xs text-neutral-500">{fmtBytes(latest.size)}</span>
+                {firmware?.stored && firmware.version === latest.tag ? (
+                  <span className="ml-2 rounded bg-green-900/60 px-2 py-0.5 text-xs text-green-300">
+                    loaded
+                  </span>
+                ) : (
+                  <span className="ml-2 rounded bg-amber-900/70 px-2 py-0.5 text-xs text-amber-300">
+                    suggested
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={useLatest}
+                disabled={fetching || (firmware?.stored && firmware.version === latest.tag)}
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium hover:bg-indigo-500 disabled:opacity-40"
+              >
+                {fetching ? "Fetching…" : "Use latest from GitHub"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          latest?.detail && <p className="mb-3 text-xs text-neutral-500">{latest.detail}</p>
+        )}
+
+        <p className="text-xs uppercase tracking-wide text-neutral-500">Active firmware</p>
         {firmware?.stored ? (
           <div className="mt-1 text-sm text-neutral-200">
             <span className="font-mono">{firmware.version || firmware.filename}</span>
             <span className="ml-2 text-xs text-neutral-500">{fmtBytes(firmware.size)}</span>
+            <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-400">
+              {firmware.source === "github" ? "from GitHub" : "manual upload"}
+            </span>
             <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">
               md5 {firmware.md5}
             </p>
             {firmware.uploaded_at && (
               <p className="text-[11px] text-neutral-500">
-                uploaded {new Date(firmware.uploaded_at).toLocaleString()}
+                loaded {new Date(firmware.uploaded_at).toLocaleString()}
               </p>
             )}
           </div>
         ) : (
           <p className="mt-1 text-sm text-neutral-500">
-            No firmware uploaded yet. Build the image with PlatformIO
-            (<span className="font-mono">pio run</span>) and upload the
-            <span className="font-mono"> .bin</span> below.
+            No firmware loaded yet. Use the latest from GitHub above, or upload a{" "}
+            <span className="font-mono">.bin</span> manually below.
           </p>
         )}
 
-        <div className="mt-3 flex flex-wrap items-end gap-2">
+        <p className="mt-4 text-xs text-neutral-500">Or upload a .bin manually (alternative):</p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span className="text-neutral-400">Version label (optional)</span>
             <input

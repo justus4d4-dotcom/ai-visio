@@ -27,3 +27,6 @@ data/firmware/
 
 # Large archives / vendor downloads
 *.zip
+
+# PlatformIO firmware build output
+firmware/.pio/

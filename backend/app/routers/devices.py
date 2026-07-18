@@ -20,10 +20,12 @@ import hashlib
 import json
 import os
 
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from app import updates
 from app.config import settings
 from app.routers.remote import hub
 
@@ -46,6 +48,19 @@ class FirmwareInfo(BaseModel):
     md5: str | None = None
     size: int | None = None
     uploaded_at: str | None = None
+    # Where the stored image came from: "upload" (manual) or "github" (release asset).
+    source: str | None = None
+
+
+class FirmwareLatest(BaseModel):
+    """The newest firmware image found on the GitHub releases (the OTA suggestion)."""
+
+    available: bool
+    tag: str | None = None
+    name: str | None = None
+    size: int | None = None
+    updated_at: str | None = None
+    detail: str | None = None
 
 
 class OtaResult(BaseModel):
@@ -72,6 +87,70 @@ def _load_meta() -> FirmwareInfo:
     return FirmwareInfo(stored=False)
 
 
+def _validate_image(data: bytes) -> None:
+    """Reject anything that clearly is not an ESP32 application image."""
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty firmware file.")
+    if len(data) > _MAX_FIRMWARE_BYTES:
+        raise HTTPException(status_code=413, detail="Firmware image too large.")
+    if data[0] != _ESP_IMAGE_MAGIC:
+        raise HTTPException(
+            status_code=422,
+            detail="That does not look like an ESP32 firmware image (bad magic byte).",
+        )
+
+
+def _store_firmware(data: bytes, *, filename: str, version: str | None, source: str) -> FirmwareInfo:
+    """Persist a firmware image (from a manual upload or a GitHub release) + its meta."""
+    os.makedirs(settings.firmware_dir, exist_ok=True)
+    with open(_bin_path(), "wb") as fh:
+        fh.write(data)
+    meta = FirmwareInfo(
+        stored=True,
+        version=version or None,
+        filename=filename,
+        md5=hashlib.md5(data).hexdigest(),
+        size=len(data),
+        uploaded_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+        source=source,
+    )
+    with open(_meta_path(), "w", encoding="utf-8") as fh:
+        json.dump(meta.model_dump(exclude={"stored"}), fh)
+    return meta
+
+
+def _latest_firmware_asset() -> dict | None:
+    """The newest ``.bin`` release asset on GitHub, or None. Raises httpx.HTTPError."""
+    url = f"{updates._GITHUB_API}/repos/{settings.github_repo}/releases"
+    with httpx.Client(timeout=15) as client:
+        resp = client.get(url, headers=updates._github_headers(), params={"per_page": 20})
+        resp.raise_for_status()
+        for rel in resp.json():
+            if rel.get("draft"):
+                continue
+            bins = [
+                a for a in (rel.get("assets") or [])
+                if str(a.get("name", "")).lower().endswith(".bin")
+            ]
+            if not bins:
+                continue
+            # Prefer an asset whose name looks like the display firmware.
+            bins.sort(
+                key=lambda a: 0
+                if any(k in a["name"].lower() for k in ("firmware", "display"))
+                else 1
+            )
+            a = bins[0]
+            return {
+                "tag": rel.get("tag_name"),
+                "name": a.get("name"),
+                "size": a.get("size"),
+                "updated_at": a.get("updated_at") or rel.get("published_at"),
+                "asset_url": a.get("url"),  # API URL (works for private repos with a token)
+            }
+    return None
+
+
 @router.get("/firmware", response_model=FirmwareInfo)
 def firmware_info() -> FirmwareInfo:
     """Metadata about the currently stored firmware image (or stored=False)."""
@@ -88,30 +167,56 @@ async def upload_firmware(
     if not name.lower().endswith(".bin"):
         raise HTTPException(status_code=422, detail="Firmware must be a .bin file.")
     data = await firmware.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty firmware file.")
-    if len(data) > _MAX_FIRMWARE_BYTES:
-        raise HTTPException(status_code=413, detail="Firmware image too large.")
-    if data[0] != _ESP_IMAGE_MAGIC:
-        raise HTTPException(
-            status_code=422,
-            detail="That does not look like an ESP32 firmware image (bad magic byte).",
-        )
+    _validate_image(data)
+    return _store_firmware(data, filename=name, version=version.strip() or None, source="upload")
 
-    os.makedirs(settings.firmware_dir, exist_ok=True)
-    with open(_bin_path(), "wb") as fh:
-        fh.write(data)
-    meta = FirmwareInfo(
-        stored=True,
-        version=version.strip() or None,
-        filename=name,
-        md5=hashlib.md5(data).hexdigest(),
-        size=len(data),
-        uploaded_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+
+@router.get("/firmware/latest", response_model=FirmwareLatest)
+def firmware_latest() -> FirmwareLatest:
+    """The newest firmware image published on GitHub releases (the OTA suggestion)."""
+    try:
+        asset = _latest_firmware_asset()
+    except httpx.HTTPError as exc:
+        return FirmwareLatest(available=False, detail=updates._friendly_api_error(exc))
+    if not asset:
+        return FirmwareLatest(
+            available=False,
+            detail="No firmware (.bin) asset found on the GitHub releases yet.",
+        )
+    return FirmwareLatest(
+        available=True,
+        tag=asset["tag"],
+        name=asset["name"],
+        size=asset["size"],
+        updated_at=asset["updated_at"],
     )
-    with open(_meta_path(), "w", encoding="utf-8") as fh:
-        json.dump(meta.model_dump(exclude={"stored"}), fh)
-    return meta
+
+
+@router.post("/firmware/fetch", response_model=FirmwareInfo)
+def fetch_latest_firmware() -> FirmwareInfo:
+    """Download the latest GitHub-release firmware asset and make it the active image."""
+    try:
+        asset = _latest_firmware_asset()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=updates._friendly_api_error(exc))
+    if not asset:
+        raise HTTPException(
+            status_code=404, detail="No firmware asset on the GitHub releases yet."
+        )
+    # Asset bytes require Accept: application/octet-stream (works for private repos).
+    headers = dict(updates._github_headers())
+    headers["Accept"] = "application/octet-stream"
+    try:
+        with httpx.Client(timeout=60, follow_redirects=True) as client:
+            r = client.get(asset["asset_url"], headers=headers)
+            r.raise_for_status()
+            data = r.content
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not download firmware: {exc}")
+    _validate_image(data)
+    return _store_firmware(
+        data, filename=asset["name"], version=asset["tag"], source="github"
+    )
 
 
 @router.get("/firmware/binary")
