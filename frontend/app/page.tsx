@@ -509,7 +509,7 @@ export default function Home() {
           : "Browser idle";
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 max-w-6xl mx-auto">
+    <main className="mx-auto flex h-[100dvh] max-w-6xl flex-col overflow-hidden p-4 sm:p-6">
       <TopNav
         onSettings={() => setShowSettings(true)}
         onAccountAction={(a: AccountAction) => {
@@ -568,8 +568,9 @@ export default function Home() {
         </Drawer>
       )}
 
-      <div className="mt-6 flex justify-center">
-        <div className="inline-flex gap-1 rounded-full border border-line bg-panel p-1 text-sm">
+      <div className="mt-4 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel p-2.5">
+        {/* Capture source */}
+        <div className="inline-flex gap-1 rounded-full border border-line bg-app p-1 text-sm">
           {(
             [
               ["agent", "Native app", agentOnline],
@@ -581,7 +582,7 @@ export default function Home() {
               key={src}
               onClick={() => selectSource(src)}
               className={
-                "flex items-center gap-2 rounded-full px-4 py-1.5 transition " +
+                "flex items-center gap-2 rounded-full px-3 py-1 transition " +
                 (captureSource === src
                   ? "bg-accent font-medium text-accent-ink"
                   : "text-ink-muted hover:text-ink")
@@ -599,34 +600,25 @@ export default function Home() {
             </button>
           ))}
         </div>
-      </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel p-3">
-        {captureSource === "browser" ? (
-          capturing ? (
+        {/* Browser capture start/stop */}
+        {captureSource === "browser" &&
+          (capturing ? (
             <button
               onClick={stopCapture}
-              className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:bg-panel-2"
+              className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink hover:bg-panel-2"
             >
               Stop capture
             </button>
           ) : (
             <button
               onClick={startCapture}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90"
             >
               Start capture
             </button>
-          )
-        ) : (
-          <button
-            onClick={solveNow}
-            disabled={!previewOnline || busy}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-40"
-          >
-            Interpret now
-          </button>
-        )}
+          ))}
+
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
@@ -657,10 +649,10 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-[3fr_2fr]">
-        {/* LEFT: live preview. */}
-        <section className="space-y-4">
-          <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-line bg-black">
+      <div className="mt-4 grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-4">
+        {/* Top-left: screen / camera preview. */}
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-panel p-3">
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-black">
             {/* Browser capture shows the live getDisplayMedia stream. */}
             <video
               ref={videoRef}
@@ -680,7 +672,7 @@ export default function Home() {
                   className="h-full w-full object-contain"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
+                <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm text-neutral-500">
                   {captureSource === "camera"
                     ? cameraOnline
                       ? "iPhone streaming — waiting for a frame…"
@@ -698,34 +690,25 @@ export default function Home() {
           </div>
 
           {agentCount > 1 && (
-            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
               {agentCount} agents running — stop all but one to avoid a flickering preview.
             </p>
           )}
-
           {error && (
-            <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300">
+            <p className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300">
               {error}
             </p>
           )}
         </section>
 
-        {/* RIGHT: interpreted answer. */}
-        <section>
-          <ResultPanel
-            busy={busy}
-            result={result}
-            onSolve={solveNow}
-            canSolve={previewOnline && !busy}
-          />
+        {/* Top-right: interpreted result (display only). */}
+        <section className="min-h-0 overflow-auto">
+          <ResultPanel busy={busy} result={result} />
         </section>
-      </div>
 
-      {/* Secondary row: case study + recent answers. */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Case study. */}
-        <aside>
-          <div className="rounded-2xl border border-line bg-panel p-4">
+        {/* Bottom-left: case study. */}
+        <aside className="min-h-0 overflow-auto">
+          <div className="flex h-full flex-col rounded-2xl border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <h2 className="text-sm font-medium text-ink">Case study</h2>
@@ -790,11 +773,10 @@ export default function Home() {
               </div>
             )}
           </div>
-
         </aside>
 
-        {/* Recent answers. */}
-        <div>
+        {/* Bottom-right: recent answers. */}
+        <div className="min-h-0 overflow-auto">
           <RecentAnswers
             refreshKey={historyTick}
             onOpenHistory={() => setShowHistory(true)}
@@ -833,17 +815,13 @@ function InfoHint({ text }: { text: string }) {
 function ResultPanel({
   busy,
   result,
-  onSolve,
-  canSolve,
 }: {
   busy: boolean;
   result: SolveResult | null;
-  onSolve: () => void;
-  canSolve: boolean;
 }) {
   if (busy) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-accent/40 bg-panel p-10">
+      <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl border border-accent/40 bg-panel p-10">
         <div className="flex items-end gap-1.5">
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.3s]" />
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.15s]" />
@@ -856,54 +834,29 @@ function ResultPanel({
       </div>
     );
   }
-  return <AnswerCard result={result} onSolve={onSolve} canSolve={canSolve} />;
+  return <AnswerCard result={result} />;
 }
 
-function AnswerCard({
-  result,
-  onSolve,
-  canSolve,
-}: {
-  result: SolveResult | null;
-  onSolve: () => void;
-  canSolve: boolean;
-}) {
+function AnswerCard({ result }: { result: SolveResult | null }) {
   if (!result) {
     return (
-      <div className="flex justify-center rounded-xl border border-line bg-panel p-8">
-        <button
-          onClick={onSolve}
-          disabled={!canSolve}
-          className="flex aspect-square w-56 flex-col items-center justify-center gap-1 rounded-full border border-line bg-gradient-to-b from-panel-2 to-app text-center shadow-inner shadow-black/60 transition hover:border-accent hover:from-panel-2 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span className="text-lg font-semibold text-ink">Interpret now</span>
-          <span className="text-xs text-ink-muted">Tap to read the frame</span>
-        </button>
+      <div className="flex h-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-line text-ink-muted">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="3.5" />
+          </svg>
+        </div>
+        <p className="text-sm font-medium text-ink">Waiting for a result</p>
+        <p className="text-xs text-ink-muted">
+          Turn on Auto-detect or trigger a read from the ESP32 device.
+        </p>
       </div>
     );
   }
   const conf = Math.round(result.confidence * 100);
   return (
-    <div
-      onClick={() => {
-        if (canSolve) onSolve();
-      }}
-      onKeyDown={(e) => {
-        if ((e.key === "Enter" || e.key === " ") && canSolve) {
-          e.preventDefault();
-          onSolve();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      title={canSolve ? "Tap to run a new interpretation" : undefined}
-      className={
-        "rounded-xl border border-line bg-panel p-6 " +
-        (canSolve
-          ? "cursor-pointer transition hover:border-accent active:scale-[0.99]"
-          : "")
-      }
-    >
+    <div className="h-full rounded-2xl border border-line bg-panel p-6">
       <div className="flex items-baseline justify-between">
         <span className="text-5xl font-bold tracking-wide text-emerald-600 dark:text-emerald-300">
           {result.answer_letters.join(" ") || "—"}
@@ -930,7 +883,7 @@ function AnswerCard({
       {result.reasoning && (
         <p className="mt-3 text-xs text-ink-muted">{result.reasoning}</p>
       )}
-      <details className="mt-4" onClick={(e) => e.stopPropagation()}>
+      <details className="mt-4">
         <summary className="cursor-pointer text-xs text-ink-muted">
           Question · {result.model}
           {result.elapsed_ms ? ` · ${(result.elapsed_ms / 1000).toFixed(1)}s` : ""}
@@ -940,11 +893,6 @@ function AnswerCard({
           {result.question_text}
         </pre>
       </details>
-      {canSolve && (
-        <p className="mt-3 text-center text-[10px] text-ink-muted">
-          Tap anywhere to run a new interpretation
-        </p>
-      )}
     </div>
   );
 }
@@ -973,7 +921,7 @@ function RecentAnswers({
     let stopped = false;
     const load = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/history?limit=5`);
+        const res = await fetch(`${API_URL}/api/history?limit=3`);
         if (!res.ok) throw new Error();
         const data: RecentItem[] = await res.json();
         if (!stopped) {
@@ -993,7 +941,7 @@ function RecentAnswers({
   }, [refreshKey]);
 
   return (
-    <div className="rounded-xl border border-line bg-panel p-4">
+    <div className="flex h-full flex-col rounded-2xl border border-line bg-panel p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-ink">Recent answers</h2>
         <button
