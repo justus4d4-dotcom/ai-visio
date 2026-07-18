@@ -1,10 +1,23 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthGate from "@/components/AuthGate";
+import PwaRegister from "@/components/PwaRegister";
+import InstallPrompt from "@/components/InstallPrompt";
 
 export const metadata: Metadata = {
-  title: "AI Image Interpreter",
+  title: "AI VISIO",
   description: "Capture a screen region, interpret it with a vision LLM, show it on an ESP32 round display",
+  applicationName: "AI VISIO",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "AI VISIO",
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -12,7 +25,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   // Extend the layout under the notch / rounded corners so full-screen camera works.
   viewportFit: "cover",
-  themeColor: "#0a0a0a",
+  themeColor: "#1a1d26",
 };
 
 export default function RootLayout({
@@ -32,6 +45,8 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <PwaRegister />
+        <InstallPrompt />
         <AuthGate>{children}</AuthGate>
       </body>
     </html>
