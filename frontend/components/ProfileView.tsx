@@ -3,7 +3,7 @@
 // Profile panel: signed-in identity + data controls. Device/Display settings live in the
 // Settings panel; Monitoring/Devices have their own panels.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -19,6 +19,7 @@ export default function ProfileView() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const confirm = useConfirm();
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/profile`, { credentials: "include" })
@@ -43,6 +44,18 @@ export default function ProfileView() {
         fetch(`${API_URL}/api/settings`, { credentials: "include" }).then((r) => r.json()),
         fetch(`${API_URL}/api/history?limit=200`, { credentials: "include" }).then((r) => r.json()),
       ]);
+      // Never export the raw LLM key: replace it with a SHA-256 hash.
+      if (settings?.provider?.api_key) {
+        const buf = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(settings.provider.api_key),
+        );
+        const hash = Array.from(new Uint8Array(buf))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        settings.provider = { ...settings.provider, api_key_sha256: hash };
+        delete settings.provider.api_key;
+      }
       const blob = new Blob([JSON.stringify({ settings, history }, null, 2)], {
         type: "application/json",
       });
@@ -52,8 +65,30 @@ export default function ProfileView() {
       a.download = "ai-visio-export.json";
       a.click();
       URL.revokeObjectURL(url);
+      setNote("Exported settings, history and hashed keys.");
     } catch {
       setNote("Export failed.");
+    }
+  }
+
+  async function importData(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setNote(null);
+    try {
+      const parsed = JSON.parse(await file.text());
+      const settings = parsed.settings ?? parsed;
+      await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings }),
+      });
+      setNote("Settings imported. Reloading…");
+      window.location.reload();
+    } catch {
+      setNote("Could not import that file.");
     }
   }
 
@@ -112,9 +147,22 @@ export default function ProfileView() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={exportData}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
+            className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
           >
-            Export my data
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V3M8 7l4-4 4 4M4 21h16" />
+            </svg>
+            Export
+          </button>
+          <input ref={importRef} type="file" accept=".json,application/json" onChange={importData} className="hidden" />
+          <button
+            onClick={() => importRef.current?.click()}
+            className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12M8 11l4 4 4-4M4 21h16" />
+            </svg>
+            Import
           </button>
           <button
             onClick={clearHistory}
@@ -123,6 +171,9 @@ export default function ProfileView() {
             Clear history
           </button>
         </div>
+        <p className="mt-2 text-[11px] text-ink-muted">
+          Export bundles your settings, history, and a hashed copy of your LLM key (never the raw key).
+        </p>
       </section>
 
       {profile?.is_admin && (

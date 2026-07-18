@@ -14,8 +14,8 @@ import {
   type SolveResult,
 } from "@/lib/settings";
 import { aHashFromBlob, aHashFromVideo, hamming } from "@/lib/vision";
-import Modal from "@/components/Modal";
 import Drawer from "@/components/Drawer";
+import Markdown from "@/components/Markdown";
 import UpdateBanner from "@/components/UpdateBanner";
 import HistoryView from "@/components/HistoryView";
 import UsageView from "@/components/UsageView";
@@ -530,21 +530,21 @@ export default function Home() {
       <UpdateBanner onOpen={() => setShowSettings(true)} />
 
       {showProfile && (
-        <Modal title="Profile" onClose={() => setShowProfile(false)}>
+        <Drawer title="Profile" onClose={() => setShowProfile(false)}>
           <ProfileView />
-        </Modal>
+        </Drawer>
       )}
 
       {showHistory && (
-        <Modal title="History" onClose={() => setShowHistory(false)}>
+        <Drawer title="History" onClose={() => setShowHistory(false)}>
           <HistoryView />
-        </Modal>
+        </Drawer>
       )}
 
       {showUsage && (
-        <Modal title="Monitoring" onClose={() => setShowUsage(false)}>
+        <Drawer title="Monitoring" onClose={() => setShowUsage(false)}>
           <UsageView />
-        </Modal>
+        </Drawer>
       )}
 
       {showSettings && (
@@ -554,7 +554,8 @@ export default function Home() {
         >
           <SettingsPanel cfg={cfg} onChange={handleCfgChange} />
           <div className="mt-8 border-t border-line pt-6">
-            <h3 className="text-sm font-semibold text-ink">Update</h3>
+            <h3 className="text-sm font-semibold text-ink">Application</h3>
+            <p className="text-xs text-ink-muted">Releases</p>
             <div className="mt-3">
               <UpdateView />
             </div>
@@ -638,18 +639,20 @@ export default function Home() {
           />
           Auto-detect
         </label>
-        <label className="flex items-center gap-1 text-xs text-ink-muted">
-          every
-          <input
-            type="number"
-            min={1}
-            max={30}
-            value={intervalSec}
-            onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
-            className="w-14 rounded border border-line bg-app p-1 text-center text-sm text-ink"
-          />
-          s
-        </label>
+        {auto && (
+          <label className="flex items-center gap-1 text-xs text-ink-muted">
+            every
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={intervalSec}
+              onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
+              className="w-14 rounded border border-line bg-app p-1 text-center text-sm text-ink"
+            />
+            s
+          </label>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
           <StatusChip label={sourceLabel} ok={previewOnline} />
           <StatusChip label={`${deviceCount} device${deviceCount === 1 ? "" : "s"}`} ok={deviceCount > 0} />
@@ -659,17 +662,15 @@ export default function Home() {
             type="button"
             onClick={captureScenario}
             disabled={!previewOnline || caseBusy}
-            title="Capture the current frame as context for the model"
+            title="Add the current frame as context for the model"
+            aria-label="Add context"
             className="flex items-center gap-1.5 rounded-lg border border-accent px-2.5 py-1.5 text-sm font-medium text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            {caseBusy ? "Adding…" : "Add context"}
             {caseScenarios.length > 0 && (
-              <span className="rounded-full bg-accent/20 px-1.5 text-xs font-semibold text-accent">
-                {caseScenarios.length}
-              </span>
+              <span className="text-xs font-semibold">{caseScenarios.length}</span>
             )}
           </button>
           {caseScenarios.length > 0 && (
@@ -677,9 +678,13 @@ export default function Home() {
               type="button"
               onClick={clearCase}
               title="Clear context"
-              className="rounded-lg border border-red-500 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+              aria-label="Clear context"
+              className="flex items-center justify-center rounded-lg border border-red-500 px-2 py-1.5 text-red-600 hover:bg-red-500/10 dark:text-red-400"
             >
-              Reset
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
             </button>
           )}
           <button
@@ -876,11 +881,11 @@ function AnswerCard({
         </span>
         <span className="text-xs text-ink-muted">{result.question_type}</span>
       </div>
-      <p className="mt-3 text-sm">{result.answer_text}</p>
+      <p className="mt-3 text-sm font-medium">{result.answer_text}</p>
       {result.full_answer && result.full_answer !== result.answer_text && (
-        <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
-          {result.full_answer}
-        </p>
+        <div className="mt-2 text-ink">
+          <Markdown>{result.full_answer}</Markdown>
+        </div>
       )}
       <div className="mt-4 h-2 w-full overflow-hidden rounded bg-panel-2">
         <div className="h-full bg-green-500" style={{ width: `${conf}%` }} />
@@ -1212,8 +1217,7 @@ function SettingsPanel({
           Advanced settings
         </summary>
         <p className="mt-1 text-xs text-ink-muted">
-          Bigger images / higher detail / thinking &amp; escalation improve accuracy but
-          cost speed. Lower them for faster, cheaper solves.
+          Higher quality = slower/costlier. Lower for faster, cheaper solves.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1229,7 +1233,7 @@ function SettingsPanel({
               className="mt-1 w-full"
             />
             <span className="text-[10px] text-ink-muted">
-              Higher = more legible text, slower. ~1280 suits 1080p; ~1568–2048 for 4K.
+              Sharper text, slower. ~1280 for 1080p, ~2048 for 4K.
             </span>
           </label>
 
@@ -1260,7 +1264,7 @@ function SettingsPanel({
               className="mt-1 w-full"
             />
             <span className="text-[10px] text-ink-muted">
-              0 = deterministic (recommended for exams). Higher = more varied.
+              0 = deterministic (recommended).
             </span>
           </label>
 
@@ -1276,7 +1280,7 @@ function SettingsPanel({
               className="mt-1 w-full"
             />
             <span className="text-[10px] text-ink-muted">
-              0 = off (fastest). Raise to help hard/multi-step questions.
+              0 = off (fastest). Raise for hard questions.
             </span>
           </label>
 
@@ -1305,8 +1309,7 @@ function SettingsPanel({
               className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
             />
             <span className="text-[10px] text-ink-muted">
-              Aborts a hanging Gemini call and logs it as a timeout. Raise if you see
-              frequent timeouts on large images.
+              Aborts a hanging call. Raise for large images.
             </span>
           </label>
 
@@ -1339,8 +1342,7 @@ function SettingsPanel({
               className="mt-1 w-full rounded border border-line bg-app p-2 font-mono text-xs"
             />
             <span className="text-[10px] text-ink-muted">
-              The exact instruction sent to Gemini. Edit to change behaviour; “Reset to
-              default” reverts to the built-in prompt (also used while left unchanged).
+              The instruction sent to the model. “Reset” reverts to the default.
             </span>
           </label>
 
