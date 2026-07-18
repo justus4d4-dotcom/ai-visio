@@ -41,6 +41,24 @@ _state: dict[str, object] = {
     "scenario_count": 0,
 }
 
+# Current ESP32 display preferences (pushed from Settings → Device & Display). Broadcast on
+# change and sent to each device on connect so a freshly-booted device picks them up.
+_display: dict[str, object] = {
+    "brightness": 200,
+    "text_size": "medium",
+    "show_confidence": True,
+    "show_subtext": True,
+    "show_cached_badge": True,
+}
+
+
+def set_display(cfg: dict) -> dict:
+    """Update the stored display config with any provided keys and return the full config."""
+    for key in _display:
+        if key in cfg and cfg[key] is not None:
+            _display[key] = cfg[key]
+    return dict(_display)
+
 # Which capture source currently answers triggers:
 #   "agent"   — the native macOS Python agent (streams the whole screen) — default
 #   "browser" — the Next.js tab holding a getDisplayMedia share
@@ -434,6 +452,8 @@ async def device_ws(ws: WebSocket) -> None:
     try:
         # Send current state immediately so a freshly-connected device syncs.
         await ws.send_json({"type": "state", **_current().model_dump()})
+        # Sync the device's display preferences on connect (e.g. after a reboot).
+        await ws.send_json({"type": "display_config", **_display})
         while True:
             raw = await ws.receive_text()
             try:

@@ -18,6 +18,7 @@ import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
 import DeviceOtaView from "@/components/DeviceOtaView";
 import ProfileView from "@/components/ProfileView";
+import DisplaySettings from "@/components/DisplaySettings";
 import TopNav from "@/components/TopNav";
 import type { AccountAction } from "@/components/AccountMenu";
 
@@ -541,6 +542,12 @@ export default function Home() {
             <h3 className="text-sm font-semibold text-neutral-200">Update</h3>
             <div className="mt-3">
               <UpdateView />
+            </div>
+          </div>
+          <div className="mt-8 border-t border-neutral-800 pt-6">
+            <h3 className="text-sm font-semibold text-neutral-200">Device &amp; Display</h3>
+            <div className="mt-3">
+              <DisplaySettings />
             </div>
           </div>
           <div className="mt-8 border-t border-neutral-800 pt-6">

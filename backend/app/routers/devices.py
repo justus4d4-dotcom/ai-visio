@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from app import updates
 from app.config import settings
-from app.routers.remote import hub
+from app.routers.remote import hub, set_display
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -261,6 +261,22 @@ async def start_ota() -> OtaResult:
         }
     )
     return OtaResult(targeted=hub.count, firmware=meta)
+
+
+class DisplayConfig(BaseModel):
+    brightness: int | None = None
+    text_size: str | None = None
+    show_confidence: bool | None = None
+    show_subtext: bool | None = None
+    show_cached_badge: bool | None = None
+
+
+@router.post("/display")
+async def push_display(cfg: DisplayConfig) -> dict[str, object]:
+    """Store + broadcast the ESP32 display preferences to all connected devices."""
+    full = set_display(cfg.model_dump(exclude_none=True))
+    await hub.broadcast({"type": "display_config", **full})
+    return {"ok": True, "targeted": hub.count, "display": full}
 
 
 @router.get("/connected")

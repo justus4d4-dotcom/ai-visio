@@ -1,17 +1,9 @@
 "use client";
 
-// Profile panel: signed-in identity, ESP32 display preferences (account-synced), and
-// data controls. Settings/Monitoring/Devices have their own panels; this ties the
-// account together. Display prefs are stored per account now; pushing them to the ESP32
-// is wired up once the device firmware supports it.
+// Profile panel: signed-in identity + data controls. Device/Display settings live in the
+// Settings panel; Monitoring/Devices have their own panels.
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  DEFAULT_DISPLAY,
-  loadAccount,
-  saveDisplay,
-  type DisplayConfig,
-} from "@/lib/settings";
+import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -24,8 +16,6 @@ type Profile = {
 
 export default function ProfileView() {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [display, setDisplay] = useState<DisplayConfig>(DEFAULT_DISPLAY);
-  const [saved, setSaved] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,17 +23,7 @@ export default function ProfileView() {
       .then((r) => r.json())
       .then(setProfile)
       .catch(() => {});
-    loadAccount().then((a) => setDisplay(a.display)).catch(() => {});
   }, []);
-
-  const setD = (patch: Partial<DisplayConfig>) =>
-    setDisplay((d) => ({ ...d, ...patch }));
-
-  const persist = useCallback(async () => {
-    await saveDisplay(display);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1500);
-  }, [display]);
 
   async function signOut() {
     try {
@@ -113,77 +93,6 @@ export default function ProfileView() {
             Sign out
           </button>
         )}
-      </section>
-
-      {/* ESP32 display preferences */}
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-200">ESP32 display</h3>
-          <button
-            onClick={persist}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium hover:bg-indigo-500"
-          >
-            {saved ? "Saved ✓" : "Save"}
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-neutral-500">
-          Synced to your account. Applied on the device once it runs firmware with display
-          settings support.
-        </p>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-xs">
-            Brightness: <b>{display.brightness}</b>
-            <input
-              type="range"
-              min={20}
-              max={255}
-              step={5}
-              value={display.brightness}
-              onChange={(e) => setD({ brightness: Number(e.target.value) })}
-              className="mt-1 w-full"
-            />
-          </label>
-          <label className="text-xs">
-            Answer text size
-            <select
-              value={display.text_size}
-              onChange={(e) => setD({ text_size: e.target.value as DisplayConfig["text_size"] })}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
-            >
-              <option value="small">small</option>
-              <option value="medium">medium</option>
-              <option value="large">large</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={display.show_confidence}
-              onChange={(e) => setD({ show_confidence: e.target.checked })}
-              className="h-4 w-4"
-            />
-            Show confidence ring
-          </label>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={display.show_subtext}
-              onChange={(e) => setD({ show_subtext: e.target.checked })}
-              className="h-4 w-4"
-            />
-            Show answer subtext
-          </label>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={display.show_cached_badge}
-              onChange={(e) => setD({ show_cached_badge: e.target.checked })}
-              className="h-4 w-4"
-            />
-            Show “cached” badge
-          </label>
-        </div>
       </section>
 
       {/* Data controls */}

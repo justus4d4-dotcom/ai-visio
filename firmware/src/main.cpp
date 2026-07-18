@@ -125,6 +125,33 @@ static bool g_caseSolving = false;  // a solve is in flight on the solve page
 static bool g_otaRequested = false;
 static String g_otaUrl;
 
+// Display preferences (pushed from Settings → Device & Display; persisted in NVS).
+static uint8_t g_dispBrightness = 200;
+static uint8_t g_dispTextSize = 1;        // 0=small, 1=medium, 2=large
+static bool g_dispShowConfidence = true;
+static bool g_dispShowSubtext = true;
+static bool g_dispShowCachedBadge = true;
+
+static void loadDisplayPrefs() {
+  prefs.begin("aiexams", true);
+  g_dispBrightness = prefs.getUChar("dbright", 200);
+  g_dispTextSize = prefs.getUChar("dtsize", 1);
+  g_dispShowConfidence = prefs.getBool("dconf", true);
+  g_dispShowSubtext = prefs.getBool("dsub", true);
+  g_dispShowCachedBadge = prefs.getBool("dcache", true);
+  prefs.end();
+}
+
+static void saveDisplayPrefs() {
+  prefs.begin("aiexams", false);
+  prefs.putUChar("dbright", g_dispBrightness);
+  prefs.putUChar("dtsize", g_dispTextSize);
+  prefs.putBool("dconf", g_dispShowConfidence);
+  prefs.putBool("dsub", g_dispShowSubtext);
+  prefs.putBool("dcache", g_dispShowCachedBadge);
+  prefs.end();
+}
+
 // ---------------------------------------------------------------------------
 // Colours (RGB565)
 // ---------------------------------------------------------------------------
@@ -254,28 +281,33 @@ static void drawWrappedCentered(const String& text, int cx, int topY,
 
 static void renderAnswer() {
   canvas.fillScreen(COL_BG);
-  drawConfidenceRing(g_answer.confidence);
+  if (g_dispShowConfidence) drawConfidenceRing(g_answer.confidence);
   drawCaseButton();
 
   canvas.setTextDatum(textdatum_t::middle_center);
 
-  // Big answer letters in the centre. Scale font down if many letters.
+  // Big answer letters in the centre. Base size follows the display text-size pref, then
+  // scales down if there are many letters.
   const char* letters = g_answer.letters.length() ? g_answer.letters.c_str() : "?";
-  int size = 7;
-  if (g_answer.letters.length() > 4) size = 5;
-  if (g_answer.letters.length() > 7) size = 3;
+  int base = g_dispTextSize == 0 ? 6 : (g_dispTextSize == 2 ? 8 : 7);
+  int size = base;
+  if (g_answer.letters.length() > 4) size = base - 2;
+  if (g_answer.letters.length() > 7) size = base - 4;
+  if (size < 2) size = 2;
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.setTextSize(size);
   canvas.drawString(letters, CX, CY - 18);
 
   // Short answer text below, wrapped across up to 3 rows with side margins so
   // it is not clipped left/right by the round screen.
-  canvas.setTextSize(1);
-  canvas.setTextColor(COL_MUTED, COL_BG);
-  drawWrappedCentered(g_answer.text, CX, CY + 26, W - 56, 12, 3);
+  if (g_dispShowSubtext) {
+    canvas.setTextSize(1);
+    canvas.setTextColor(COL_MUTED, COL_BG);
+    drawWrappedCentered(g_answer.text, CX, CY + 26, W - 56, 12, 3);
+  }
 
   // Cached marker.
-  if (g_answer.cached) {
+  if (g_dispShowCachedBadge && g_answer.cached) {
     canvas.setTextColor(COL_ACCENT, COL_BG);
     canvas.drawString("cached", CX, CY + 64);
   }
@@ -589,6 +621,21 @@ static void handleWsMessage(const uint8_t* payload, size_t len) {
       g_otaUrl = g_serverUrl + String(path);
       g_otaRequested = true;
     }
+    return;
+  }
+
+  // Display preferences pushed from the app: apply + persist.
+  if (strcmp(type, "display_config") == 0) {
+    g_dispBrightness = (uint8_t)constrain((int)(doc["brightness"] | g_dispBrightness), 10, 255);
+    const char* ts = doc["text_size"] | "";
+    if (strcmp(ts, "small") == 0) g_dispTextSize = 0;
+    else if (strcmp(ts, "large") == 0) g_dispTextSize = 2;
+    else if (strcmp(ts, "medium") == 0) g_dispTextSize = 1;
+    g_dispShowConfidence = doc["show_confidence"] | g_dispShowConfidence;
+    g_dispShowSubtext = doc["show_subtext"] | g_dispShowSubtext;
+    g_dispShowCachedBadge = doc["show_cached_badge"] | g_dispShowCachedBadge;
+    lcd.setBrightness(g_dispBrightness);
+    saveDisplayPrefs();
     return;
   }
 
@@ -959,7 +1006,8 @@ void setup() {
 
   lcd.init();
   lcd.setRotation(0);
-  lcd.setBrightness(200);
+  loadDisplayPrefs();
+  lcd.setBrightness(g_dispBrightness);
   canvas.setColorDepth(16);
   canvas.createSprite(W, H);
 
