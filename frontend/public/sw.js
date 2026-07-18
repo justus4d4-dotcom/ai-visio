@@ -1,7 +1,7 @@
 // AI VISIO service worker. Kept intentionally small: it makes the app installable and
 // gives an offline shell, but never caches API/WebSocket traffic (always live).
-const CACHE = "ai-visio-v1";
-const PRECACHE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-maskable.svg"];
+const CACHE = "ai-visio-v2";
+const PRECACHE = ["/", "/manifest.webmanifest", "/icon-192.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
