@@ -33,7 +33,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (state === "checking") {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-neutral-500">
+      <div className="flex min-h-screen items-center justify-center text-sm text-ink-muted">
         Loading…
       </div>
     );
@@ -47,9 +47,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const loginUrl = `${API_URL}/api/auth/login?next=${encodeURIComponent(next)}`;
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-          <h1 className="text-lg font-semibold text-neutral-100">AI VISIO</h1>
-          <p className="mt-2 text-sm text-neutral-400">
+        <div className="w-full max-w-sm rounded-2xl border border-line bg-panel p-8 text-center">
+          <h1 className="text-lg font-semibold text-ink">AI VISIO</h1>
+          <p className="mt-2 text-sm text-ink-muted">
             Sign in with an authorized Google account to continue.
           </p>
           <a

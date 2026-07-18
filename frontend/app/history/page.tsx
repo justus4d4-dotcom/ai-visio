@@ -14,7 +14,7 @@ export default function HistoryPage() {
         <h1 className="text-2xl font-semibold">History</h1>
         <Link
           href="/"
-          className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
         >
           Back
         </Link>

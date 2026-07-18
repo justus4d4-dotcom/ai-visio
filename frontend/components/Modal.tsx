@@ -40,18 +40,18 @@ export default function Modal({
       aria-label={title}
     >
       <div
-        className="my-6 w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+        className="my-6 w-full max-w-3xl rounded-2xl border border-line bg-app shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 flex items-center justify-between gap-3 rounded-t-2xl border-b border-neutral-800 bg-neutral-950/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 flex items-center justify-between gap-3 rounded-t-2xl border-b border-line bg-app/95 px-5 py-4 backdrop-blur">
           <div>
             <h2 className="text-lg font-semibold">{title}</h2>
-            {subtitle && <p className="text-xs text-neutral-400">{subtitle}</p>}
+            {subtitle && <p className="text-xs text-ink-muted">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg border border-neutral-700 px-2.5 py-1 text-sm text-neutral-300 hover:bg-neutral-800"
+            className="rounded-lg border border-line px-2.5 py-1 text-sm text-ink hover:bg-panel-2"
           >
             ✕
           </button>

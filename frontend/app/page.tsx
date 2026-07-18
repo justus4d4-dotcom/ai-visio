@@ -549,14 +549,14 @@ export default function Home() {
               setShowSettings(false);
             }}
           />
-          <div className="mt-8 border-t border-neutral-800 pt-6">
-            <h3 className="text-sm font-semibold text-neutral-200">Update</h3>
+          <div className="mt-8 border-t border-line pt-6">
+            <h3 className="text-sm font-semibold text-ink">Update</h3>
             <div className="mt-3">
               <UpdateView />
             </div>
           </div>
-          <div className="mt-8 border-t border-neutral-800 pt-6">
-            <h3 className="text-sm font-semibold text-neutral-200">Devices</h3>
+          <div className="mt-8 border-t border-line pt-6">
+            <h3 className="text-sm font-semibold text-ink">Devices</h3>
             <div className="mt-3">
               <DeviceOtaView />
             </div>
@@ -656,7 +656,7 @@ export default function Home() {
       <div className="mt-4 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         {/* LEFT: live preview + interpreted answer. */}
         <section className="space-y-4">
-          <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-black">
+          <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-line bg-black">
             {/* Browser capture shows the live getDisplayMedia stream. */}
             <video
               ref={videoRef}
@@ -694,13 +694,13 @@ export default function Home() {
           </div>
 
           {agentCount > 1 && (
-            <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-2 text-xs text-amber-300">
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
               {agentCount} agents running — stop all but one to avoid a flickering preview.
             </p>
           )}
 
           {error && (
-            <p className="rounded-lg border border-red-900 bg-red-950/60 p-3 text-sm text-red-300">
+            <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300">
               {error}
             </p>
           )}
@@ -718,10 +718,10 @@ export default function Home() {
           <div className="rounded-2xl border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <h2 className="text-sm font-medium text-neutral-300">Case study</h2>
+                <h2 className="text-sm font-medium text-ink">Case study</h2>
                 <InfoHint text="Capture the 'fake company' scenario screens first. Their text is cached and sent with every solve so the model answers the question using the case requirements. On the ESP32, swipe up to enter case-study mode, tap the camera per screen, then Complete." />
               </div>
-              <span className="flex items-center gap-2 text-xs text-neutral-400">
+              <span className="flex items-center gap-2 text-xs text-ink-muted">
                 <span
                   className={
                     "inline-block h-2 w-2 rounded-full " +
@@ -731,7 +731,7 @@ export default function Home() {
                 {caseScenarios.length > 0 ? `${caseScenarios.length} cached` : "none"}
               </span>
             </div>
-            <p className="mt-2 text-xs text-neutral-500">
+            <p className="mt-2 text-xs text-ink-muted">
               {caseScenarios.length > 0
                 ? "A case study is active and applied to every solve."
                 : "No case active. Capture scenario screens to attach them."}
@@ -740,23 +740,23 @@ export default function Home() {
               <button
                 onClick={captureScenario}
                 disabled={!previewOnline || caseBusy}
-                className="flex-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium hover:bg-indigo-500 disabled:opacity-40"
+                className="flex-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
               >
                 {caseBusy ? "Capturing…" : "Capture scenario"}
               </button>
               <button
                 onClick={clearCase}
                 disabled={caseScenarios.length === 0}
-                className="rounded-lg border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/60 disabled:opacity-40"
+                className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/60"
               >
                 Clear
               </button>
             </div>
             {caseScenarios.length > 0 && (
-              <div className="mt-3 border-t border-neutral-800 pt-3">
+              <div className="mt-3 border-t border-line pt-3">
                 <button
                   onClick={() => setShowCaseContent((v) => !v)}
-                  className="text-xs text-indigo-400 hover:underline"
+                  className="text-xs text-accent hover:underline"
                 >
                   {showCaseContent
                     ? "Hide cached content"
@@ -767,12 +767,12 @@ export default function Home() {
                     {caseScenarios.map((s, i) => (
                       <div
                         key={i}
-                        className="rounded-lg border border-neutral-800 bg-neutral-950 p-2"
+                        className="rounded-lg border border-line bg-app p-2"
                       >
-                        <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-500">
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-ink-muted">
                           Screen {i + 1}
                         </p>
-                        <p className="whitespace-pre-wrap text-xs text-neutral-300">{s}</p>
+                        <p className="whitespace-pre-wrap text-xs text-ink">{s}</p>
                       </div>
                     ))}
                   </div>
@@ -807,7 +807,7 @@ function InfoHint({ text }: { text: string }) {
   return (
     <span
       title={text}
-      className="ml-1.5 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-neutral-600 text-[10px] font-medium text-neutral-400 hover:border-neutral-400 hover:text-neutral-200"
+      className="ml-1.5 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] font-medium text-ink-muted hover:border-ink-muted hover:text-ink"
     >
       i
     </span>
@@ -829,14 +829,14 @@ function ResultPanel({
 }) {
   if (busy) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-indigo-900/60 bg-neutral-900 p-10">
+      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-accent/40 bg-panel p-10">
         <div className="flex items-end gap-1.5">
-          <span className="h-3 w-3 animate-bounce rounded-full bg-indigo-400 [animation-delay:-0.3s]" />
-          <span className="h-3 w-3 animate-bounce rounded-full bg-indigo-400 [animation-delay:-0.15s]" />
-          <span className="h-3 w-3 animate-bounce rounded-full bg-indigo-400" />
+          <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.3s]" />
+          <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.15s]" />
+          <span className="h-3 w-3 animate-bounce rounded-full bg-accent" />
         </div>
-        <p className="animate-pulse text-sm font-medium text-indigo-300">Thinking…</p>
-        <p className="text-xs text-neutral-500">
+        <p className="animate-pulse text-sm font-medium text-accent">Thinking…</p>
+        <p className="text-xs text-ink-muted">
           Sent to Gemini — interpreting the frame
         </p>
       </div>
@@ -856,14 +856,14 @@ function AnswerCard({
 }) {
   if (!result) {
     return (
-      <div className="flex justify-center rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+      <div className="flex justify-center rounded-xl border border-line bg-panel p-8">
         <button
           onClick={onSolve}
           disabled={!canSolve}
-          className="flex aspect-square w-56 flex-col items-center justify-center gap-1 rounded-full border border-neutral-700 bg-gradient-to-b from-neutral-800 to-neutral-950 text-center shadow-inner shadow-black/60 transition hover:border-indigo-500 hover:from-neutral-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex aspect-square w-56 flex-col items-center justify-center gap-1 rounded-full border border-line bg-gradient-to-b from-panel-2 to-app text-center shadow-inner shadow-black/60 transition hover:border-accent hover:from-panel-2 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <span className="text-lg font-semibold text-neutral-100">Interpret now</span>
-          <span className="text-xs text-neutral-500">Tap to read the frame</span>
+          <span className="text-lg font-semibold text-ink">Interpret now</span>
+          <span className="text-xs text-ink-muted">Tap to read the frame</span>
         </button>
       </div>
     );
@@ -884,50 +884,50 @@ function AnswerCard({
       tabIndex={0}
       title={canSolve ? "Tap to run a new interpretation" : undefined}
       className={
-        "rounded-xl border border-neutral-800 bg-neutral-900 p-6 " +
+        "rounded-xl border border-line bg-panel p-6 " +
         (canSolve
-          ? "cursor-pointer transition hover:border-indigo-500 active:scale-[0.99]"
+          ? "cursor-pointer transition hover:border-accent active:scale-[0.99]"
           : "")
       }
     >
       <div className="flex items-baseline justify-between">
-        <span className="text-5xl font-bold tracking-wide text-green-400">
+        <span className="text-5xl font-bold tracking-wide text-emerald-600 dark:text-emerald-300">
           {result.answer_letters.join(" ") || "—"}
         </span>
-        <span className="text-xs text-neutral-500">{result.question_type}</span>
+        <span className="text-xs text-ink-muted">{result.question_type}</span>
       </div>
       <p className="mt-3 text-sm">{result.answer_text}</p>
       {result.full_answer && result.full_answer !== result.answer_text && (
-        <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-300">
+        <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
           {result.full_answer}
         </p>
       )}
-      <div className="mt-4 h-2 w-full overflow-hidden rounded bg-neutral-800">
+      <div className="mt-4 h-2 w-full overflow-hidden rounded bg-panel-2">
         <div className="h-full bg-green-500" style={{ width: `${conf}%` }} />
       </div>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-ink-muted">
         Confidence {conf}%
         {result.cached && (
-          <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-400">
+          <span className="ml-2 rounded bg-panel-2 px-1.5 py-0.5 text-ink-muted">
             cached · no API call
           </span>
         )}
       </p>
       {result.reasoning && (
-        <p className="mt-3 text-xs text-neutral-400">{result.reasoning}</p>
+        <p className="mt-3 text-xs text-ink-muted">{result.reasoning}</p>
       )}
       <details className="mt-4" onClick={(e) => e.stopPropagation()}>
-        <summary className="cursor-pointer text-xs text-neutral-500">
+        <summary className="cursor-pointer text-xs text-ink-muted">
           Question · {result.model}
           {result.elapsed_ms ? ` · ${(result.elapsed_ms / 1000).toFixed(1)}s` : ""}
           {result.tokens_used ? ` · ${result.tokens_used} tokens` : ""}
         </summary>
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-neutral-950 p-3 text-xs text-neutral-400">
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-app p-3 text-xs text-ink-muted">
           {result.question_text}
         </pre>
       </details>
       {canSolve && (
-        <p className="mt-3 text-center text-[10px] text-neutral-600">
+        <p className="mt-3 text-center text-[10px] text-ink-muted">
           Tap anywhere to run a new interpretation
         </p>
       )}
@@ -979,22 +979,22 @@ function RecentAnswers({
   }, [refreshKey]);
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+    <div className="rounded-xl border border-line bg-panel p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-neutral-300">Recent answers</h2>
+        <h2 className="text-sm font-medium text-ink">Recent answers</h2>
         <button
           onClick={onOpenHistory}
-          className="text-xs text-indigo-400 hover:underline"
+          className="text-xs text-accent hover:underline"
         >
           View all
         </button>
       </div>
       {error ? (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-ink-muted">
           History unavailable — is the backend database running?
         </p>
       ) : items.length === 0 ? (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-ink-muted">
           No answers yet. Interpret a frame and it will appear here.
         </p>
       ) : (
@@ -1002,16 +1002,16 @@ function RecentAnswers({
           {items.map((it) => (
             <li
               key={it.id}
-              className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2"
+              className="flex items-center gap-3 rounded-lg border border-line bg-app px-3 py-2"
             >
-              <span className="text-lg font-bold text-green-400">
+              <span className="text-lg font-bold text-emerald-600 dark:text-emerald-300">
                 {it.answer_letters.join(" ") || "—"}
               </span>
               <div className="min-w-0 flex-1">
                 {it.answer_text && (
-                  <p className="truncate text-xs text-neutral-200">{it.answer_text}</p>
+                  <p className="truncate text-xs text-ink">{it.answer_text}</p>
                 )}
-                <p className="text-[11px] text-neutral-500">
+                <p className="text-[11px] text-ink-muted">
                   {it.question_type} · {new Date(it.created_at).toLocaleTimeString()}
                 </p>
               </div>
@@ -1084,7 +1084,7 @@ function SettingsPanel({
 
   return (
     <div>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-ink-muted">
         Get a key at{" "}
         <a
           className="underline"
@@ -1104,7 +1104,7 @@ function SettingsPanel({
             value={cfg.api_key}
             onChange={(e) => set({ api_key: e.target.value })}
             placeholder="AIza…"
-            className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
           />
         </label>
 
@@ -1116,7 +1116,7 @@ function SettingsPanel({
               if (e.target.value !== CUSTOM) set({ model: e.target.value });
               else set({ model: "" });
             }}
-            className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
           >
             {sortedModels.map((m) => (
               <option key={m} value={m}>
@@ -1130,17 +1130,17 @@ function SettingsPanel({
               value={cfg.model}
               onChange={(e) => set({ model: e.target.value })}
               placeholder="type a model id"
-              className="mt-2 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+              className="mt-2 w-full rounded border border-line bg-app p-2 text-sm"
             />
           )}
         </label>
       </div>
 
-      <details className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
-        <summary className="cursor-pointer select-none text-sm font-medium text-neutral-200">
+      <details className="mt-4 rounded-lg border border-line bg-panel/50 p-3">
+        <summary className="cursor-pointer select-none text-sm font-medium text-ink">
           Fine-tuning · quality vs speed
         </summary>
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs text-ink-muted">
           Bigger images / higher detail / thinking &amp; escalation improve accuracy but
           cost speed. Lower them for faster, cheaper solves.
         </p>
@@ -1157,7 +1157,7 @@ function SettingsPanel({
               onChange={(e) => set({ max_edge: Number(e.target.value) })}
               className="mt-1 w-full"
             />
-            <span className="text-[10px] text-neutral-500">
+            <span className="text-[10px] text-ink-muted">
               Higher = more legible text, slower. ~1280 suits 1080p; ~1568–2048 for 4K.
             </span>
           </label>
@@ -1169,7 +1169,7 @@ function SettingsPanel({
               onChange={(e) =>
                 set({ media_resolution: e.target.value as "low" | "medium" | "high" })
               }
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+              className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
             >
               <option value="low">low — fastest / cheapest</option>
               <option value="medium">medium — balanced (default)</option>
@@ -1188,7 +1188,7 @@ function SettingsPanel({
               onChange={(e) => set({ temperature: Number(e.target.value) })}
               className="mt-1 w-full"
             />
-            <span className="text-[10px] text-neutral-500">
+            <span className="text-[10px] text-ink-muted">
               0 = deterministic (recommended for exams). Higher = more varied.
             </span>
           </label>
@@ -1204,7 +1204,7 @@ function SettingsPanel({
               onChange={(e) => set({ thinking_budget: Number(e.target.value) })}
               className="mt-1 w-full"
             />
-            <span className="text-[10px] text-neutral-500">
+            <span className="text-[10px] text-ink-muted">
               0 = off (fastest). Raise to help hard/multi-step questions.
             </span>
           </label>
@@ -1218,7 +1218,7 @@ function SettingsPanel({
               step={16}
               value={cfg.max_output_tokens ?? 800}
               onChange={(e) => set({ max_output_tokens: Number(e.target.value) })}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+              className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
             />
           </label>
 
@@ -1231,9 +1231,9 @@ function SettingsPanel({
               step={5}
               value={cfg.timeout_s ?? 30}
               onChange={(e) => set({ timeout_s: Number(e.target.value) })}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+              className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
             />
-            <span className="text-[10px] text-neutral-500">
+            <span className="text-[10px] text-ink-muted">
               Aborts a hanging Gemini call and logs it as a timeout. Raise if you see
               frequent timeouts on large images.
             </span>
@@ -1247,7 +1247,7 @@ function SettingsPanel({
               className="h-4 w-4"
             />
             Auto-escalate to a stronger model if unreadable
-            <span className="text-[10px] text-neutral-500">(off = faster)</span>
+            <span className="text-[10px] text-ink-muted">(off = faster)</span>
           </label>
 
           <label className="col-span-full text-xs">
@@ -1256,7 +1256,7 @@ function SettingsPanel({
               <button
                 type="button"
                 onClick={() => set({ system_prompt: "" })}
-                className="text-[10px] text-indigo-400 hover:underline"
+                className="text-[10px] text-accent hover:underline"
               >
                 Reset to default
               </button>
@@ -1265,9 +1265,9 @@ function SettingsPanel({
               value={cfg.system_prompt ? cfg.system_prompt : defaultPrompt}
               onChange={(e) => set({ system_prompt: e.target.value })}
               rows={10}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 font-mono text-xs"
+              className="mt-1 w-full rounded border border-line bg-app p-2 font-mono text-xs"
             />
-            <span className="text-[10px] text-neutral-500">
+            <span className="text-[10px] text-ink-muted">
               The exact instruction sent to Gemini. Edit to change behaviour; “Reset to
               default” reverts to the built-in prompt (also used while left unchanged).
             </span>
@@ -1280,7 +1280,7 @@ function SettingsPanel({
               onChange={(e) => set({ extra_context: e.target.value })}
               placeholder="e.g. Questions are in German about AWS. Prefer the AWS-recommended answer."
               rows={2}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-xs"
+              className="mt-1 w-full rounded border border-line bg-app p-2 text-xs"
             />
           </label>
         </div>
@@ -1289,19 +1289,19 @@ function SettingsPanel({
       <div className="mt-4 flex items-center gap-3">
         <button
           onClick={onSave}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-500"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90"
         >
           Save
         </button>
         <button
           onClick={testConnection}
           disabled={testing || !cfg.api_key}
-          className="rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800 disabled:opacity-40"
+          className="rounded-lg border border-line px-4 py-2 text-sm hover:bg-panel-2 disabled:opacity-40"
         >
           {testing ? "Testing…" : "Test connection"}
         </button>
         {testMsg && (
-          <span className={"text-xs " + (testOk ? "text-green-400" : "text-red-400")}>
+          <span className={"text-xs " + (testOk ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
             {testMsg}
           </span>
         )}

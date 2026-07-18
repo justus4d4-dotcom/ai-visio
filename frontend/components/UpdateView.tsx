@@ -141,48 +141,48 @@ export default function UpdateView() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-neutral-400">Application updates</p>
+        <p className="text-sm text-ink-muted">Application updates</p>
         <button
           onClick={loadStatus}
           disabled={loading || applying}
-          className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-40"
         >
           {loading ? "Checking…" : "Check again"}
         </button>
       </div>
 
       {error && (
-        <p className="mt-4 rounded-lg border border-red-900 bg-red-950/60 p-3 text-sm text-red-300">
+        <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300">
           {error}
         </p>
       )}
 
       {status && (
         <>
-          <section className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <section className="mt-4 rounded-xl border border-line bg-panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-wide text-neutral-500">
+                <p className="text-xs uppercase tracking-wide text-ink-muted">
                   Installed
                 </p>
-                <p className="mt-1 font-mono text-lg text-neutral-100">
+                <p className="mt-1 font-mono text-lg text-ink">
                   {status.current_version}
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">{status.repo}</p>
+                <p className="mt-1 text-xs text-ink-muted">{status.repo}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-wide text-neutral-500">
+                <p className="text-xs uppercase tracking-wide text-ink-muted">
                   Latest
                 </p>
-                <p className="mt-1 font-mono text-lg text-neutral-100">
+                <p className="mt-1 font-mono text-lg text-ink">
                   {status.latest_version ?? "—"}
                 </p>
                 {status.update_available ? (
-                  <span className="mt-1 inline-block rounded bg-amber-900/70 px-2 py-0.5 text-xs font-medium text-amber-300">
+                  <span className="mt-1 inline-block rounded bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
                     Update available
                   </span>
                 ) : (
-                  <span className="mt-1 inline-block rounded bg-green-900/60 px-2 py-0.5 text-xs font-medium text-green-300">
+                  <span className="mt-1 inline-block rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-green-900/60 dark:text-green-300">
                     Up to date
                   </span>
                 )}
@@ -190,7 +190,7 @@ export default function UpdateView() {
             </div>
 
             {status.detail && (
-              <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/40 p-2 text-xs text-amber-300">
+              <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
                 {status.detail}
               </p>
             )}
@@ -211,7 +211,7 @@ export default function UpdateView() {
                       ? "Already on the latest release."
                       : "Fetch the latest release, migrate, rebuild and restart."
                 }
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {applying || status.in_progress
                   ? "Updating…"
@@ -220,7 +220,7 @@ export default function UpdateView() {
                     : "Update now"}
               </button>
               {!status.can_apply && (
-                <span className="text-xs text-neutral-500">
+                <span className="text-xs text-ink-muted">
                   Self-update is only available on the managed LXC deployment.
                 </span>
               )}
@@ -228,7 +228,7 @@ export default function UpdateView() {
           </section>
 
           {progress && (
-            <section className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <section className="mt-4 rounded-xl border border-line bg-app p-4">
               <div className="flex items-center gap-2">
                 <span
                   className={
@@ -242,7 +242,7 @@ export default function UpdateView() {
                           : "bg-neutral-600")
                   }
                 />
-                <p className="text-sm text-neutral-300">
+                <p className="text-sm text-ink">
                   {progress.state === "running"
                     ? `Updating${progress.target ? ` to ${progress.target}` : ""}… the app will restart.`
                     : progress.state === "success"
@@ -261,9 +261,9 @@ export default function UpdateView() {
           )}
 
           <section className="mt-6">
-            <h2 className="text-sm font-semibold text-neutral-300">Release history</h2>
+            <h2 className="text-sm font-semibold text-ink">Release history</h2>
             {status.releases.length === 0 ? (
-              <p className="mt-2 text-sm text-neutral-500">
+              <p className="mt-2 text-sm text-ink-muted">
                 No releases found for {status.repo}.
               </p>
             ) : (
@@ -276,39 +276,39 @@ export default function UpdateView() {
                   return (
                     <li
                       key={r.tag}
-                      className="rounded-lg border border-neutral-800 bg-neutral-900"
+                      className="rounded-lg border border-line bg-panel"
                     >
                       <button
                         onClick={() => setExpanded(open ? null : r.tag)}
                         className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
                       >
                         <span className="flex items-center gap-2">
-                          <span className="font-mono text-sm text-neutral-100">
+                          <span className="font-mono text-sm text-ink">
                             {r.name || r.tag}
                           </span>
                           {r.prerelease && (
-                            <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                            <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-muted">
                               pre-release
                             </span>
                           )}
                           {isCurrent && (
-                            <span className="rounded bg-green-900/60 px-1.5 py-0.5 text-[10px] text-green-300">
+                            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-green-900/60 dark:text-green-300">
                               installed
                             </span>
                           )}
                         </span>
-                        <span className="shrink-0 text-xs text-neutral-500">
+                        <span className="shrink-0 text-xs text-ink-muted">
                           {fmtDate(r.published_at)}
                         </span>
                       </button>
                       {open && (
-                        <div className="border-t border-neutral-800 px-3 py-3">
+                        <div className="border-t border-line px-3 py-3">
                           {r.notes ? (
-                            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-neutral-300">
+                            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-ink">
                               {r.notes}
                             </pre>
                           ) : (
-                            <p className="text-xs text-neutral-500">
+                            <p className="text-xs text-ink-muted">
                               No release notes provided.
                             </p>
                           )}
@@ -317,7 +317,7 @@ export default function UpdateView() {
                               href={r.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="mt-2 inline-block text-xs text-indigo-400 hover:underline"
+                              className="mt-2 inline-block text-xs text-accent hover:underline"
                             >
                               View on GitHub →
                             </a>

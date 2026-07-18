@@ -213,11 +213,11 @@ export default function DeviceOtaView() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-neutral-400">ESP32 firmware (OTA)</p>
+        <p className="text-sm text-ink-muted">ESP32 firmware (OTA)</p>
         <span
           className={
             "rounded px-2 py-0.5 text-xs " +
-            (count > 0 ? "bg-green-900 text-green-300" : "bg-neutral-800 text-neutral-400")
+            (count > 0 ? "bg-emerald-500/15 text-emerald-700 dark:bg-green-900 dark:text-green-300" : "bg-panel-2 text-ink-muted")
           }
         >
           {count} connected
@@ -225,31 +225,31 @@ export default function DeviceOtaView() {
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg border border-red-900 bg-red-950/60 p-3 text-sm text-red-300">
+        <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300">
           {error}
         </p>
       )}
       {notice && (
-        <p className="mt-3 rounded-lg border border-green-900 bg-green-950/40 p-3 text-sm text-green-300">
+        <p className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300">
           {notice}
         </p>
       )}
 
-      <section className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <section className="mt-3 rounded-xl border border-line bg-panel p-4">
         {/* Suggested firmware = the latest GitHub release asset. */}
         {latest?.available ? (
-          <div className="mb-3 rounded-lg border border-indigo-900/70 bg-indigo-950/30 p-3">
+          <div className="mb-3 rounded-lg border border-accent/40 bg-accent/10 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm">
-                <span className="text-neutral-400">Latest on GitHub: </span>
-                <span className="font-mono text-neutral-100">{latest.tag}</span>
-                <span className="ml-2 text-xs text-neutral-500">{fmtBytes(latest.size)}</span>
+                <span className="text-ink-muted">Latest on GitHub: </span>
+                <span className="font-mono text-ink">{latest.tag}</span>
+                <span className="ml-2 text-xs text-ink-muted">{fmtBytes(latest.size)}</span>
                 {firmware?.stored && firmware.version === latest.tag ? (
-                  <span className="ml-2 rounded bg-green-900/60 px-2 py-0.5 text-xs text-green-300">
+                  <span className="ml-2 rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-700 dark:bg-green-900/60 dark:text-green-300">
                     loaded
                   </span>
                 ) : (
-                  <span className="ml-2 rounded bg-amber-900/70 px-2 py-0.5 text-xs text-amber-300">
+                  <span className="ml-2 rounded bg-amber-500/15 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
                     suggested
                   </span>
                 )}
@@ -257,63 +257,63 @@ export default function DeviceOtaView() {
               <button
                 onClick={useLatest}
                 disabled={fetching || (firmware?.stored && firmware.version === latest.tag)}
-                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium hover:bg-indigo-500 disabled:opacity-40"
+                className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
               >
                 {fetching ? "Fetching…" : "Use latest from GitHub"}
               </button>
             </div>
           </div>
         ) : (
-          latest?.detail && <p className="mb-3 text-xs text-neutral-500">{latest.detail}</p>
+          latest?.detail && <p className="mb-3 text-xs text-ink-muted">{latest.detail}</p>
         )}
 
-        <p className="text-xs uppercase tracking-wide text-neutral-500">Active firmware</p>
+        <p className="text-xs uppercase tracking-wide text-ink-muted">Active firmware</p>
         {firmware?.stored ? (
-          <div className="mt-1 text-sm text-neutral-200">
+          <div className="mt-1 text-sm text-ink">
             <span className="font-mono">{firmware.version || firmware.filename}</span>
-            <span className="ml-2 text-xs text-neutral-500">{fmtBytes(firmware.size)}</span>
-            <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-400">
+            <span className="ml-2 text-xs text-ink-muted">{fmtBytes(firmware.size)}</span>
+            <span className="ml-2 rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-ink-muted">
               {firmware.source === "github" ? "from GitHub" : "manual upload"}
             </span>
-            <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">
+            <p className="mt-1 break-all font-mono text-[11px] text-ink-muted">
               md5 {firmware.md5}
             </p>
             {firmware.uploaded_at && (
-              <p className="text-[11px] text-neutral-500">
+              <p className="text-[11px] text-ink-muted">
                 loaded {new Date(firmware.uploaded_at).toLocaleString()}
               </p>
             )}
           </div>
         ) : (
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-ink-muted">
             No firmware loaded yet. Use the latest from GitHub above, or upload a{" "}
             <span className="font-mono">.bin</span> manually below.
           </p>
         )}
 
-        <p className="mt-4 text-xs text-neutral-500">Or upload a .bin manually (alternative):</p>
+        <p className="mt-4 text-xs text-ink-muted">Or upload a .bin manually (alternative):</p>
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
-            <span className="text-neutral-400">Version label (optional)</span>
+            <span className="text-ink-muted">Version label (optional)</span>
             <input
               value={version}
               onChange={(e) => setVersion(e.target.value)}
               placeholder="e.g. v0.6.0"
-              className="w-36 rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+              className="w-36 rounded border border-line bg-app p-2 text-sm"
             />
           </label>
           <input ref={fileRef} type="file" accept=".bin" onChange={onFile} className="hidden" />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800 disabled:opacity-40"
+            className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-panel-2 disabled:opacity-40"
           >
             {uploading ? "Uploading…" : firmware?.stored ? "Replace .bin" : "Upload .bin"}
           </button>
           <button
             onClick={pushOta}
             disabled={pushing || !firmware?.stored || count === 0}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-500 disabled:opacity-40"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
             title={
               count === 0
                 ? "No devices connected"
@@ -332,12 +332,12 @@ export default function DeviceOtaView() {
           {devices.map((d) => (
             <li
               key={d.id}
-              className="rounded-lg border border-neutral-800 bg-neutral-950 text-sm"
+              className="rounded-lg border border-line bg-panel text-sm"
             >
               <div className="flex items-center gap-2 px-3 py-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-neutral-200">{d.name ?? "Display"}</p>
-                  <p className="truncate font-mono text-[11px] text-neutral-500">
+                  <p className="truncate font-medium text-ink">{d.name ?? "Display"}</p>
+                  <p className="truncate font-mono text-[11px] text-ink-muted">
                     {d.remote ?? d.id.slice(0, 8)}
                   </p>
                 </div>
@@ -345,12 +345,12 @@ export default function DeviceOtaView() {
                   className={
                     "shrink-0 rounded px-1.5 py-0.5 text-xs " +
                     (d.ota_status === "updating"
-                      ? "bg-amber-900/70 text-amber-200"
+                      ? "bg-amber-500/15 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200"
                       : d.ota_status === "failed" || d.ota_status === "no_response"
-                        ? "bg-red-900/70 text-red-200"
+                        ? "bg-red-500/15 text-red-700 dark:bg-red-900/60 dark:text-red-200"
                         : d.ota_status === "requested"
-                          ? "bg-indigo-900/70 text-indigo-200"
-                          : "bg-neutral-800 text-neutral-400")
+                          ? "bg-accent/15 text-accent dark:bg-accent/25 dark:text-accent"
+                          : "bg-panel-2 text-ink-muted")
                   }
                 >
                   {d.ota_status === "no_response" ? "no response" : d.ota_status ?? "connected"}
@@ -361,7 +361,7 @@ export default function DeviceOtaView() {
                   onClick={() => deployOne(d.id, d.name ?? "this device")}
                   disabled={!firmware?.stored}
                   title="Deploy firmware to this device"
-                  className="shrink-0 rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-xs text-ink hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Deploy
                 </button>
@@ -371,8 +371,8 @@ export default function DeviceOtaView() {
                   title="Display settings"
                   aria-expanded={openGear === d.id}
                   className={
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-neutral-300 hover:bg-neutral-800 " +
-                    (openGear === d.id ? "border-indigo-600 bg-neutral-800" : "border-neutral-700")
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-ink hover:bg-panel-2 " +
+                    (openGear === d.id ? "border-accent bg-panel-2" : "border-line")
                   }
                 >
                   <svg
@@ -391,11 +391,11 @@ export default function DeviceOtaView() {
               </div>
 
               {openGear === d.id && (
-                <div className="space-y-3 border-t border-neutral-800 px-3 py-3">
+                <div className="space-y-3 border-t border-line px-3 py-3">
                   <div>
-                    <label className="flex items-center justify-between text-xs text-neutral-300">
+                    <label className="flex items-center justify-between text-xs text-ink">
                       <span>Brightness</span>
-                      <span className="font-mono text-neutral-500">{display.brightness}</span>
+                      <span className="font-mono text-ink-muted">{display.brightness}</span>
                     </label>
                     <input
                       type="range"
@@ -403,18 +403,18 @@ export default function DeviceOtaView() {
                       max={255}
                       value={display.brightness}
                       onChange={(e) => changeDisplay({ brightness: Number(e.target.value) }, d.id)}
-                      className="mt-1 w-full accent-indigo-500"
+                      className="mt-1 w-full accent-accent"
                     />
                   </div>
 
-                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                  <label className="flex items-center justify-between text-xs text-ink">
                     <span>Text size</span>
                     <select
                       value={display.text_size}
                       onChange={(e) =>
                         changeDisplay({ text_size: e.target.value as DisplayConfig["text_size"] }, d.id)
                       }
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+                      className="rounded-md border border-line bg-app px-2 py-1 text-xs text-ink"
                     >
                       <option value="small">Small</option>
                       <option value="medium">Medium</option>
@@ -422,46 +422,46 @@ export default function DeviceOtaView() {
                     </select>
                   </label>
 
-                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                  <label className="flex items-center justify-between text-xs text-ink">
                     <span>Show confidence</span>
                     <input
                       type="checkbox"
                       checked={display.show_confidence}
                       onChange={(e) => changeDisplay({ show_confidence: e.target.checked }, d.id)}
-                      className="h-4 w-4 accent-indigo-500"
+                      className="h-4 w-4 accent-accent"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                  <label className="flex items-center justify-between text-xs text-ink">
                     <span>Show subtext</span>
                     <input
                       type="checkbox"
                       checked={display.show_subtext}
                       onChange={(e) => changeDisplay({ show_subtext: e.target.checked }, d.id)}
-                      className="h-4 w-4 accent-indigo-500"
+                      className="h-4 w-4 accent-accent"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                  <label className="flex items-center justify-between text-xs text-ink">
                     <span>Show cached badge</span>
                     <input
                       type="checkbox"
                       checked={display.show_cached_badge}
                       onChange={(e) => changeDisplay({ show_cached_badge: e.target.checked }, d.id)}
-                      className="h-4 w-4 accent-indigo-500"
+                      className="h-4 w-4 accent-accent"
                     />
                   </label>
 
-                  <label className="flex items-center gap-2 border-t border-neutral-800 pt-3 text-xs text-neutral-400">
+                  <label className="flex items-center gap-2 border-t border-line pt-3 text-xs text-ink-muted">
                     <input
                       type="checkbox"
                       checked={saveAll}
                       onChange={(e) => setSaveAll(e.target.checked)}
-                      className="h-4 w-4 accent-indigo-500"
+                      className="h-4 w-4 accent-accent"
                     />
                     <span>Save to all devices</span>
                   </label>
-                  <p className="text-[11px] text-neutral-600">
+                  <p className="text-[11px] text-ink-muted">
                     Changes save automatically and push{saveAll ? " to all connected displays" : " to this display"}.
                   </p>
                 </div>
@@ -471,12 +471,12 @@ export default function DeviceOtaView() {
         </ul>
       )}
 
-      <p className="mt-3 text-xs text-neutral-500">
+      <p className="mt-3 text-xs text-ink-muted">
         Devices must be flashed once over USB first; afterwards firmware can be pushed here.
         Each display downloads the image over your LAN and reboots into it.
       </p>
       {devices.some((d) => d.ota_status === "no_response") && (
-        <p className="mt-2 rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-300">
+        <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           A device didn&apos;t respond to the update. That usually means it is still running
           firmware from before OTA support was added, so it ignores the push. Flash it once
           over USB or WiFi (<span className="font-mono">pio run -e waveshare-s3-round-ota -t

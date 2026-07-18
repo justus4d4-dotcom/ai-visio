@@ -70,16 +70,16 @@ export default function ProfileView() {
   return (
     <div className="space-y-6">
       {/* Identity */}
-      <section className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <section className="flex items-center justify-between gap-3 rounded-xl border border-line bg-panel p-4">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-lg font-semibold">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-lg font-semibold text-accent-ink">
             {initial}
           </span>
           <div>
-            <p className="text-sm font-medium text-neutral-100">
+            <p className="text-sm font-medium text-ink">
               {profile?.email ?? (profile?.auth_required ? "Not signed in" : "Local (no sign-in)")}
             </p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-ink-muted">
               {profile?.is_admin ? "Admin" : "Member"}
               {profile ? " · settings synced to this account" : ""}
             </p>
@@ -88,7 +88,7 @@ export default function ProfileView() {
         {profile?.authenticated && profile.auth_required && (
           <button
             onClick={signOut}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
           >
             Sign out
           </button>
@@ -96,19 +96,19 @@ export default function ProfileView() {
       </section>
 
       {/* Data controls */}
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-        <h3 className="text-sm font-semibold text-neutral-200">Your data</h3>
-        {note && <p className="mt-2 text-xs text-neutral-400">{note}</p>}
+      <section className="rounded-xl border border-line bg-panel p-4">
+        <h3 className="text-sm font-semibold text-ink">Your data</h3>
+        {note && <p className="mt-2 text-xs text-ink-muted">{note}</p>}
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={exportData}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2"
           >
             Export my data
           </button>
           <button
             onClick={clearHistory}
-            className="rounded-lg border border-red-900 px-3 py-1.5 text-sm text-red-300 hover:bg-red-950/60"
+            className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-500/10 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/60"
           >
             Clear history
           </button>
@@ -116,7 +116,7 @@ export default function ProfileView() {
       </section>
 
       {profile?.is_admin && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-muted">
           Admin: allowed-account management is available via the backend allowlist
           (ALLOWED_EMAILS / bootstrap admins) for now.
         </p>
