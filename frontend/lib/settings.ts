@@ -12,6 +12,8 @@ export type ProviderConfig = {
   auto_escalate?: boolean;
   // Per-request timeout (seconds) for the Gemini call.
   timeout_s?: number;
+  // Cached case-study scenario text, merged in per solve (not a persisted setting).
+  case_context?: string;
 };
 
 export type SolveResult = {

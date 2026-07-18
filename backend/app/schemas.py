@@ -35,6 +35,10 @@ class GeminiConfig(BaseModel):
     system_prompt: str = ""
     # Extra instructions/context appended to the prompt (e.g. subject, language).
     extra_context: str = ""
+    # Cached "case study" scenario text (Feature: case studies). When set, it is supplied
+    # to the model as background it must read before answering the on-screen question.
+    # Held by the browser and sent per solve; never stored server-side.
+    case_context: str = ""
     # Retry an unreadable frame with a stronger model (off = single call = faster).
     auto_escalate: bool = True
     # Per-request timeout (seconds) for the Gemini call. Requests that exceed it are

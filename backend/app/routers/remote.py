@@ -32,8 +32,13 @@ _state: dict[str, object] = {
     "status": "idle",
     "pending": False,
     "trigger_id": None,
+    # What a pending trigger asks the browser to do: "solve" a question (default) or
+    # "scenario" (capture + transcribe a case-study screen; see the case-study flow).
+    "action": "solve",
     "answer_id": None,
     "answer": None,
+    # Rolling count of case-study scenario screens captured in the current session.
+    "scenario_count": 0,
 }
 
 # Which capture source currently answers triggers:
@@ -177,10 +182,18 @@ class TriggerResponse(BaseModel):
 class PollResponse(BaseModel):
     triggered: bool
     trigger_id: str | None = None
+    # "solve" (answer the question) or "scenario" (capture a case-study screen).
+    action: str = "solve"
 
 
 class StatusUpdate(BaseModel):
     status: str  # "solving" | "error"
+
+
+class ScenarioReport(BaseModel):
+    ok: bool = True
+    count: int  # total scenario screens captured so far this session
+    detail: str | None = None
 
 
 class RemoteState(BaseModel):
@@ -327,6 +340,7 @@ def trigger() -> TriggerResponse:
     tid = str(uuid.uuid4())
     _state["pending"] = True
     _state["trigger_id"] = tid
+    _state["action"] = "solve"
     _state["status"] = "requested"
     return TriggerResponse(ok=True, trigger_id=tid)
 
@@ -336,8 +350,32 @@ def poll() -> PollResponse:
     """Called by the browser to learn whether a touch is pending. Clears the flag."""
     if _state["pending"]:
         _state["pending"] = False
-        return PollResponse(triggered=True, trigger_id=_state["trigger_id"])  # type: ignore[arg-type]
+        return PollResponse(
+            triggered=True,
+            trigger_id=_state["trigger_id"],  # type: ignore[arg-type]
+            action=str(_state.get("action") or "solve"),
+        )
     return PollResponse(triggered=False)
+
+
+@router.post("/scenario", response_model=RemoteState)
+async def report_scenario(report: ScenarioReport) -> RemoteState:
+    """The browser reports it captured + cached a case-study scenario screen.
+
+    Broadcast to connected devices so the ESP32 can show a per-screen success message
+    and the running capture count while in case-study mode.
+    """
+    _state["scenario_count"] = int(report.count)
+    state = _current()
+    await hub.broadcast(
+        {
+            "type": "scenario",
+            "ok": report.ok,
+            "count": int(report.count),
+            "detail": report.detail,
+        }
+    )
+    return state
 
 
 @router.post("/status", response_model=RemoteState)
@@ -389,6 +427,14 @@ async def device_ws(ws: WebSocket) -> None:
                 # A touch on the device: mark pending so the browser solves the frame.
                 _state["pending"] = True
                 _state["trigger_id"] = str(uuid.uuid4())
+                _state["action"] = "solve"
+                _state["status"] = "requested"
+            elif msg.get("type") == "capture_scenario":
+                # Case-study mode: the device asked to capture the current screen as a
+                # scenario. The browser transcribes + caches it (it holds the API key).
+                _state["pending"] = True
+                _state["trigger_id"] = str(uuid.uuid4())
+                _state["action"] = "scenario"
                 _state["status"] = "requested"
     except WebSocketDisconnect:
         hub.disconnect(cid)

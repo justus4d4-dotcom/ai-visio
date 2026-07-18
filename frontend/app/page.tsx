@@ -23,6 +23,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const CHANGE_THRESHOLD = 6;
 const STABLE_THRESHOLD = 3;
 
+// localStorage key for cached case-study scenario transcripts.
+const CASE_STORAGE_KEY = "aiexams.case";
+
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -64,9 +67,84 @@ export default function Home() {
   const [remoteStatus, setRemoteStatus] = useState("idle");
   const [deviceCount, setDeviceCount] = useState(0);
 
+  // Case study: cached scenario transcripts. The "fake company" scenario screens are
+  // captured + transcribed once and sent as case_context on every solve so the model
+  // reads the requirements before answering the question screen. Held in the browser.
+  const [caseScenarios, setCaseScenarios] = useState<string[]>([]);
+  const [caseBusy, setCaseBusy] = useState(false);
+  const caseScenariosRef = useRef<string[]>([]);
+
   useEffect(() => {
     setCfg(loadConfig());
+    try {
+      const raw = window.localStorage.getItem(CASE_STORAGE_KEY);
+      const arr = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(arr)) {
+        caseScenariosRef.current = arr;
+        setCaseScenarios(arr);
+      }
+    } catch {
+      /* ignore corrupt cache */
+    }
   }, []);
+
+  function persistScenarios(next: string[]) {
+    caseScenariosRef.current = next;
+    setCaseScenarios(next);
+    try {
+      window.localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      /* storage full/unavailable: keep in-memory */
+    }
+  }
+
+  function clearCase() {
+    persistScenarios([]);
+  }
+
+  // Capture the current frame as a case-study scenario screen: transcribe it via Gemini
+  // and append it to the cached case context. Returns true on a non-empty transcript.
+  async function captureScenario(): Promise<boolean> {
+    if (!cfg.api_key) {
+      setError("Add your Gemini API key in Settings first.");
+      return false;
+    }
+    const blob =
+      captureSource === "browser" ? await grabFrame() : await fetchRemoteFrame();
+    if (!blob) {
+      setError("No frame to capture. Is the selected source streaming?");
+      return false;
+    }
+    setCaseBusy(true);
+    busyRef.current = true; // block auto-detect/solve while capturing
+    try {
+      const form = new FormData();
+      form.append("image", blob, "scenario.png");
+      form.append("provider", JSON.stringify(cfg));
+      const res = await fetch(`${API_URL}/api/extract-scenario`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.detail ?? `Capture failed (${res.status})`);
+      }
+      const data = await res.json();
+      const text = (data.text ?? "").trim();
+      if (!text) {
+        setError("No scenario text found on that screen.");
+        return false;
+      }
+      persistScenarios([...caseScenariosRef.current, text]);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scenario capture failed.");
+      return false;
+    } finally {
+      setCaseBusy(false);
+      busyRef.current = false;
+    }
+  }
 
   async function startCapture() {
     setError(null);
@@ -156,7 +234,11 @@ export default function Home() {
     try {
       const form = new FormData();
       form.append("image", blob, "frame.png");
-      form.append("provider", JSON.stringify(cfg));
+      // Attach the cached case-study context (if any) so the model reads the scenario
+      // requirements before answering. Merged per request; never saved to Settings.
+      const caseContext = caseScenariosRef.current.join("\n\n---\n\n");
+      const solveCfg = caseContext ? { ...cfg, case_context: caseContext } : cfg;
+      form.append("provider", JSON.stringify(solveCfg));
       const res = await fetch(`${API_URL}/api/solve`, {
         method: "POST",
         body: form,
@@ -327,15 +409,22 @@ export default function Home() {
       try {
         const poll = await fetch(`${API_URL}/api/remote/poll`).then((r) => r.json());
         if (poll.triggered && !busyRef.current && !stopped) {
-          setRemoteStatus("solving");
-          await post("status", { status: "solving" });
-          const result = await solveNow();
-          if (result) {
-            await post("answer", result);
-            setRemoteStatus("done");
+          if (poll.action === "scenario") {
+            // Case-study capture triggered from the ESP32: transcribe + cache the
+            // current screen, then report the running count back to the device.
+            const ok = await captureScenario();
+            await post("scenario", { ok, count: caseScenariosRef.current.length });
           } else {
-            await post("status", { status: "error" });
-            setRemoteStatus("error");
+            setRemoteStatus("solving");
+            await post("status", { status: "solving" });
+            const result = await solveNow();
+            if (result) {
+              await post("answer", result);
+              setRemoteStatus("done");
+            } else {
+              await post("status", { status: "error" });
+              setRemoteStatus("error");
+            }
           }
         }
       } catch {
@@ -658,6 +747,45 @@ export default function Home() {
               >
                 {deviceCount} connected
               </span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <h2 className="text-sm font-medium text-neutral-300">Case study</h2>
+                <InfoHint text="Capture the 'fake company' scenario screens first. Their text is cached and sent with every solve so the model answers the question using the case requirements. On the ESP32, swipe up to enter case-study mode, tap the camera per screen, then Complete." />
+              </div>
+              <span className="flex items-center gap-2 text-xs text-neutral-400">
+                <span
+                  className={
+                    "inline-block h-2 w-2 rounded-full " +
+                    (caseScenarios.length > 0 ? "bg-green-500" : "bg-neutral-600")
+                  }
+                />
+                {caseScenarios.length > 0 ? `${caseScenarios.length} cached` : "none"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              {caseScenarios.length > 0
+                ? "A case study is active and applied to every solve."
+                : "No case active. Capture scenario screens to attach them."}
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={captureScenario}
+                disabled={!previewOnline || caseBusy}
+                className="flex-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium hover:bg-indigo-500 disabled:opacity-40"
+              >
+                {caseBusy ? "Capturing…" : "Capture scenario"}
+              </button>
+              <button
+                onClick={clearCase}
+                disabled={caseScenarios.length === 0}
+                className="rounded-lg border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/60 disabled:opacity-40"
+              >
+                Clear
+              </button>
             </div>
           </div>
 

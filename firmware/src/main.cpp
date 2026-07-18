@@ -67,7 +67,7 @@ static WiFiManagerParameter g_serverParam("server", "Backend base URL", "", 96);
 static bool g_paramAdded = false;
 
 // Device-side state machine.
-enum class UiState { Connecting, Idle, Solving, Answer, Error, Settings };
+enum class UiState { Connecting, Idle, Solving, Answer, Error, Settings, CaseStudy };
 static UiState g_state = UiState::Connecting;
 
 // Baseline answer id so we ignore a stale answer left on the server.
@@ -102,6 +102,17 @@ static int g_settingsContentH = 0;       // total content height (computed each 
 static bool g_settingsDragging = false;  // a drag is in progress on the settings screen
 static int32_t g_settingsDragStartY = 0;
 static int32_t g_settingsLastY = 0;
+
+// Case-study mode state. Swipe up to enter: the whole screen becomes a capture UI for the
+// "fake company" scenario screens. Each tap on the camera asks the browser (which holds
+// the API key) to transcribe + cache the current screen; the running count is pushed back
+// over the WebSocket. The cached scenario is then supplied as context on later solves.
+static int g_caseCount = 0;              // scenario screens captured (from server broadcasts)
+static bool g_caseCapturing = false;     // a capture request is in flight
+static uint32_t g_caseCaptureAt = 0;     // millis() when the capture was requested
+static uint32_t g_caseFlashAt = 0;       // millis() of the last success/failure flash
+static bool g_caseLastOk = true;         // outcome of the last capture (for the flash)
+static const uint32_t CASE_CAPTURE_TIMEOUT_MS = 12000;
 
 // ---------------------------------------------------------------------------
 // Colours (RGB565)
@@ -258,6 +269,74 @@ static void renderError(const char* msg) {
   canvas.drawString(msg, CX, CY + 14);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.drawString("tap to retry", CX, CY + 40);
+  canvas.pushSprite(0, 0);
+}
+
+// A simple camera glyph (no icon font): body + viewfinder bump + lens.
+static void drawCameraIcon(int cx, int cy, int s, uint16_t col) {
+  canvas.fillRoundRect(cx - s, cy - (s * 2) / 3, s * 2, (s * 4) / 3, 5, col);
+  canvas.fillRoundRect(cx - s / 3, cy - (s * 2) / 3 - 6, (s * 2) / 3, 8, 2, col);
+  canvas.fillCircle(cx, cy, s / 2, COL_BG);
+  canvas.fillCircle(cx, cy, s / 3, col);
+  canvas.fillCircle(cx, cy, s / 6, COL_BG);
+}
+
+// Case-study capture screen: a "Case Study" label at the top, a big camera to tap for
+// each scenario screen (with a capturing spinner / saved flash), the running count, and a
+// "Complete" button at the bottom. Swipe up (or Complete) leaves case-study mode.
+static void renderCaseStudy() {
+  canvas.fillScreen(COL_BG);
+  canvas.setTextDatum(textdatum_t::middle_center);
+
+  // Top label + exit hint.
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextSize(2);
+  canvas.drawString("Case Study", CX, 24);
+  canvas.setTextColor(COL_MUTED, COL_BG);
+  canvas.setTextSize(1);
+  canvas.drawString("swipe up to exit", CX, 44);
+
+  // Centre: capturing spinner, a success/failure flash, or the tappable camera.
+  const bool flashing = g_caseFlashAt && (millis() - g_caseFlashAt < 1600);
+  if (g_caseCapturing) {
+    const int sweep = (millis() / 4) % 360;
+    canvas.fillArc(CX, CY, 38, 44, sweep, sweep + 80, COL_ACCENT);
+    canvas.setTextColor(COL_TEXT, COL_BG);
+    canvas.setTextSize(1);
+    canvas.drawString("Reading...", CX, CY);
+  } else if (flashing) {
+    canvas.setTextColor(g_caseLastOk ? COL_GOOD : COL_BAD, COL_BG);
+    canvas.setTextSize(2);
+    canvas.drawString(g_caseLastOk ? "Saved" : "Failed", CX, CY - 6);
+    if (g_caseLastOk) {
+      canvas.setTextSize(1);
+      canvas.setTextColor(COL_MUTED, COL_BG);
+      char b[24];
+      snprintf(b, sizeof(b), "screen %d", g_caseCount);
+      canvas.drawString(b, CX, CY + 16);
+    }
+  } else {
+    drawCameraIcon(CX, CY - 4, 22, COL_ACCENT);
+    canvas.setTextColor(COL_MUTED, COL_BG);
+    canvas.setTextSize(1);
+    canvas.drawString("Tap to capture", CX, CY + 34);
+  }
+
+  // Running count.
+  canvas.setTextColor(COL_TEXT, COL_BG);
+  canvas.setTextSize(1);
+  char c[24];
+  snprintf(c, sizeof(c), "Screens cached: %d", g_caseCount);
+  canvas.drawString(c, CX, H - 66);
+
+  // Complete button (bottom).
+  const int bw = 124, bh = 30;
+  const int bx = CX - bw / 2, by = (int)H - 46;
+  canvas.fillRoundRect(bx, by, bw, bh, 8, COL_GOOD);
+  canvas.setTextColor(COL_BG, COL_GOOD);
+  canvas.setTextSize(2);
+  canvas.drawString("Complete", CX, by + bh / 2);
+
   canvas.pushSprite(0, 0);
 }
 
@@ -427,6 +506,16 @@ static void handleWsMessage(const uint8_t* payload, size_t len) {
     return;
   }
 
+  // Case-study capture result: the browser transcribed + cached a scenario screen and
+  // reports the running count. Show a success/failure flash on the case-study screen.
+  if (strcmp(type, "scenario") == 0) {
+    g_caseCount = doc["count"] | g_caseCount;
+    g_caseLastOk = doc["ok"] | true;
+    g_caseCapturing = false;
+    g_caseFlashAt = millis();
+    return;
+  }
+
   if (strcmp(status, "error") == 0) {
     g_errorMsg = "solve failed";
     g_state = UiState::Error;
@@ -491,6 +580,12 @@ static bool wsTrigger() {
   return g_ws.sendTXT("{\"type\":\"trigger\"}");
 }
 
+// Ask the browser to capture + transcribe the current screen as a case-study scenario.
+static bool wsCaptureScenario() {
+  if (!g_wsConnected) return false;
+  return g_ws.sendTXT("{\"type\":\"capture_scenario\"}");
+}
+
 // ---------------------------------------------------------------------------
 // Touch
 // ---------------------------------------------------------------------------
@@ -501,10 +596,12 @@ static bool touchPressed() {
 
 // Poll the touch panel once and classify the gesture. A press released without
 // travelling is a tap; a downward drag that starts near the top edge is a
-// "swipe down" (used to open the WiFi settings).
-static void pollGestures(bool* tap, bool* swipeDown) {
+// "swipe down" (opens WiFi settings); an upward drag that starts near the bottom
+// edge is a "swipe up" (toggles case-study mode).
+static void pollGestures(bool* tap, bool* swipeDown, bool* swipeUp) {
   *tap = false;
   *swipeDown = false;
+  *swipeUp = false;
 
   int32_t x, y;
   const bool now = lcd.getTouch(&x, &y);
@@ -518,6 +615,10 @@ static void pollGestures(bool* tap, bool* swipeDown) {
                (y - g_gestureStartY) > SWIPE_MIN_DISTANCE) {
       g_gestureSwiped = true;
       *swipeDown = true;
+    } else if (!g_gestureSwiped && g_gestureStartY > (int32_t)H - SWIPE_TOP_ZONE &&
+               (g_gestureStartY - y) > SWIPE_MIN_DISTANCE) {
+      g_gestureSwiped = true;
+      *swipeUp = true;
     }
   } else if (g_gestureActive) {
     g_gestureActive = false;
@@ -786,9 +887,22 @@ void loop() {
 
   bool tapped = false;
   bool swipeDown = false;
-  pollGestures(&tapped, &swipeDown);
+  bool swipeUp = false;
+  pollGestures(&tapped, &swipeDown, &swipeUp);
   if (swipeDown) {
     openWifiSettings();
+    return;
+  }
+  if (swipeUp) {
+    // Toggle case-study mode from the normal answer screens.
+    if (g_state == UiState::CaseStudy) {
+      g_state = UiState::Idle;
+    } else if (g_state == UiState::Idle || g_state == UiState::Answer ||
+               g_state == UiState::Error) {
+      g_caseCapturing = false;
+      g_caseFlashAt = 0;
+      g_state = UiState::CaseStudy;
+    }
     return;
   }
 
@@ -827,6 +941,31 @@ void loop() {
         } else {
           g_errorMsg = "no link";
           g_state = UiState::Error;
+        }
+      }
+      break;
+
+    case UiState::CaseStudy:
+      // Time out a capture that never got a result back.
+      if (g_caseCapturing && millis() - g_caseCaptureAt > CASE_CAPTURE_TIMEOUT_MS) {
+        g_caseCapturing = false;
+        g_caseLastOk = false;
+        g_caseFlashAt = millis();
+      }
+      renderCaseStudy();
+      if (tapped) {
+        if (g_gestureStartY > (int32_t)H - 52) {
+          // Complete button → back to the answer screens.
+          g_state = UiState::Idle;
+        } else if (!g_caseCapturing) {
+          // Camera / centre → capture this scenario screen.
+          if (wsCaptureScenario()) {
+            g_caseCapturing = true;
+            g_caseCaptureAt = millis();
+          } else {
+            g_caseLastOk = false;
+            g_caseFlashAt = millis();
+          }
         }
       }
       break;

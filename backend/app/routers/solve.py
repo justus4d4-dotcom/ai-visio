@@ -136,3 +136,35 @@ async def solve(
         logging.exception("Failed to persist answer to history")
 
     return result
+
+
+@router.post("/extract-scenario")
+async def extract_scenario(
+    image: UploadFile = File(...),
+    provider: str = Form(...),
+) -> dict[str, str]:
+    """Transcribe a captured case-study scenario screen to plain text.
+
+    Part of the case-study flow: the browser captures one or more scenario screens, each
+    is transcribed here, and the combined text is cached client-side and sent as
+    ``case_context`` on later solves. No history row is written for a capture.
+    """
+    try:
+        cfg = GeminiConfig(**json.loads(provider))
+    except (json.JSONDecodeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid Gemini config: {exc}")
+
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty image")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large")
+
+    try:
+        text = gemini.extract_scenario(data, cfg)
+    except Exception as exc:  # noqa: BLE001
+        _, http_status, detail = _classify_error(exc)
+        logging.warning("Scenario extraction failed: %s", exc)
+        raise HTTPException(status_code=http_status, detail=detail)
+
+    return {"text": text}
