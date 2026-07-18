@@ -106,7 +106,6 @@ export default function Home() {
   // reads the requirements before answering the question screen. Held in the browser.
   const [caseScenarios, setCaseScenarios] = useState<string[]>([]);
   const [caseBusy, setCaseBusy] = useState(false);
-  const [showCaseContent, setShowCaseContent] = useState(false);
   const caseScenariosRef = useRef<string[]>([]);
   // Auto-save provider settings shortly after any change (no manual Save button).
   const cfgSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -658,6 +657,33 @@ export default function Home() {
           {remoteStatus !== "idle" && <span className="text-ink-muted">esp: {remoteStatus}</span>}
           <button
             type="button"
+            onClick={captureScenario}
+            disabled={!previewOnline || caseBusy}
+            title="Capture the current frame as context for the model"
+            className="flex items-center gap-1.5 rounded-lg border border-accent px-2.5 py-1.5 text-sm font-medium text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {caseBusy ? "Adding…" : "Add context"}
+            {caseScenarios.length > 0 && (
+              <span className="rounded-full bg-accent/20 px-1.5 text-xs font-semibold text-accent">
+                {caseScenarios.length}
+              </span>
+            )}
+          </button>
+          {caseScenarios.length > 0 && (
+            <button
+              type="button"
+              onClick={clearCase}
+              title="Clear context"
+              className="rounded-lg border border-red-500 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+            >
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
             onClick={solveNow}
             disabled={!previewOnline || busy}
             title="Analyse the current frame"
@@ -673,8 +699,10 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-        {/* Top-left: screen / camera preview. */}
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-stretch">
+        {/* Left column: preview + recent answers. */}
+        <div className="flex flex-1 flex-col gap-4">
+        {/* Screen / camera preview. */}
         <section className="flex flex-col rounded-2xl border border-line bg-panel p-3">
           <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-panel-2">
             {/* Browser capture shows the live getDisplayMedia stream. */}
@@ -723,8 +751,17 @@ export default function Home() {
           )}
         </section>
 
-        {/* Top-right: interpreted result (display only). */}
-        <section>
+          {/* Recent answers (moved from the old case-study slot). */}
+          <div>
+            <RecentAnswers
+              refreshKey={historyTick}
+              onOpenHistory={() => setShowHistory(true)}
+            />
+          </div>
+        </div>
+
+        {/* Right column: interpreted result, full height. */}
+        <section className="flex-1">
           <ResultPanel
             busy={busy}
             result={result}
@@ -732,83 +769,6 @@ export default function Home() {
             canSolve={previewOnline && !busy}
           />
         </section>
-
-        {/* Bottom-left: case study. */}
-        <aside>
-          <div className="rounded-2xl border border-line bg-panel p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <h2 className="text-sm font-medium text-ink">Case study</h2>
-                <InfoHint text="Capture the 'fake company' scenario screens first. Their text is cached and sent with every solve so the model answers the question using the case requirements. On the Display, swipe up to enter case-study mode, tap the camera per screen, then Complete." />
-              </div>
-              <span className="flex items-center gap-2 text-xs text-ink-muted">
-                <span
-                  className={
-                    "inline-block h-2 w-2 rounded-full " +
-                    (caseScenarios.length > 0 ? "bg-green-500" : "bg-neutral-600")
-                  }
-                />
-                {caseScenarios.length > 0 ? `${caseScenarios.length} cached` : "none"}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-ink-muted">
-              {caseScenarios.length > 0
-                ? "A case study is active and applied to every solve."
-                : "No case active. Capture scenario screens to attach them."}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                onClick={captureScenario}
-                disabled={!previewOnline || caseBusy}
-                className="flex-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
-              >
-                {caseBusy ? "Capturing…" : "Capture scenario"}
-              </button>
-              <button
-                onClick={clearCase}
-                disabled={caseScenarios.length === 0}
-                className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/60"
-              >
-                Clear
-              </button>
-            </div>
-            {caseScenarios.length > 0 && (
-              <div className="mt-3 border-t border-line pt-3">
-                <button
-                  onClick={() => setShowCaseContent((v) => !v)}
-                  className="text-xs text-accent hover:underline"
-                >
-                  {showCaseContent
-                    ? "Hide cached content"
-                    : `Show cached content (${caseScenarios.length})`}
-                </button>
-                {showCaseContent && (
-                  <div className="mt-2 max-h-56 space-y-2 overflow-auto">
-                    {caseScenarios.map((s, i) => (
-                      <div
-                        key={i}
-                        className="rounded-lg border border-line bg-app p-2"
-                      >
-                        <p className="mb-1 text-[10px] uppercase tracking-wide text-ink-muted">
-                          Screen {i + 1}
-                        </p>
-                        <p className="whitespace-pre-wrap text-xs text-ink">{s}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* Bottom-right: recent answers. */}
-        <div>
-          <RecentAnswers
-            refreshKey={historyTick}
-            onOpenHistory={() => setShowHistory(true)}
-          />
-        </div>
       </div>
     </main>
   );
@@ -820,19 +780,6 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
     <span className="flex items-center gap-1.5 rounded-full bg-panel-2 px-2 py-0.5 text-ink-muted">
       <span className={"inline-block h-1.5 w-1.5 rounded-full " + (ok ? "bg-sage" : "bg-taupe-grey")} />
       {label}
-    </span>
-  );
-}
-
-// Small "i" badge that reveals an explainer on hover, saving vertical space that a
-// permanent caption would take.
-function InfoHint({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      className="ml-1.5 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] font-medium text-ink-muted hover:border-ink-muted hover:text-ink"
-    >
-      i
     </span>
   );
 }
@@ -852,7 +799,7 @@ function ResultPanel({
 }) {
   if (busy) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-accent/40 bg-panel p-10">
+      <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl border border-accent/40 bg-panel p-10">
         <div className="flex items-end gap-1.5">
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.3s]" />
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.15s]" />
@@ -899,7 +846,7 @@ function AnswerCard({
         disabled={!canSolve}
         title={canSolve ? "Interpret the current frame" : undefined}
         className={
-          "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center " +
+          "flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center " +
           (canSolve
             ? "cursor-pointer transition hover:border-accent active:scale-[0.99]"
             : "cursor-default")
@@ -922,7 +869,7 @@ function AnswerCard({
   }
   const conf = Math.round(result.confidence * 100);
   return (
-    <div className="rounded-2xl border border-line bg-panel p-6">
+    <div className="h-full rounded-2xl border border-line bg-panel p-6">
       <div className="flex items-baseline justify-between">
         <span className="text-5xl font-bold tracking-wide text-emerald-600 dark:text-emerald-300">
           {result.answer_letters.join(" ") || "—"}
