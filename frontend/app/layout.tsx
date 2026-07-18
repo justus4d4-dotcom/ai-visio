@@ -6,7 +6,7 @@ import InstallPrompt from "@/components/InstallPrompt";
 
 export const metadata: Metadata = {
   title: "AI VISIO",
-  description: "Capture a screen region, interpret it with a vision LLM, show it on an ESP32 round display",
+  description: "Capture a screen region, interpret it with a vision LLM, show it on a round Display",
   applicationName: "AI VISIO",
   manifest: "/manifest.webmanifest",
   appleWebApp: {

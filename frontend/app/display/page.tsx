@@ -150,7 +150,7 @@ export default function DisplayPage() {
             </div>
           ) : !answer ? (
             <div className="flex flex-1 items-center justify-center text-center text-lg text-neutral-500">
-              Waiting for the first answer. Trigger a solve from the ESP32 or the app.
+              Waiting for the first answer. Trigger a solve from the Display or the app.
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">

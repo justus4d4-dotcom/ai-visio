@@ -213,7 +213,7 @@ export default function DeviceOtaView() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-ink-muted">ESP32 firmware (OTA)</p>
+        <p className="text-sm text-ink-muted">Display firmware (OTA)</p>
         <span
           className={
             "rounded px-2 py-0.5 text-xs " +
@@ -257,8 +257,11 @@ export default function DeviceOtaView() {
               <button
                 onClick={useLatest}
                 disabled={fetching || (firmware?.stored && firmware.version === latest.tag)}
-                className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
+                className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
               >
+                <svg viewBox="0 0 24 24" className={"h-4 w-4 " + (fetching ? "animate-spin" : "")} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {fetching ? <path d="M21 12a9 9 0 1 1-2.64-6.36" /> : <path d="M12 3v10M8 9l4 4 4-4M5 21h14" />}
+                </svg>
                 {fetching ? "Fetching…" : "Use latest from GitHub"}
               </button>
             </div>
@@ -306,14 +309,17 @@ export default function DeviceOtaView() {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-panel-2 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-panel-2 disabled:opacity-40"
           >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V5M8 9l4-4 4 4M5 21h14" />
+            </svg>
             {uploading ? "Uploading…" : firmware?.stored ? "Replace .bin" : "Upload .bin"}
           </button>
           <button
             onClick={pushOta}
             disabled={pushing || !firmware?.stored || count === 0}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:opacity-40"
             title={
               count === 0
                 ? "No devices connected"
@@ -322,6 +328,9 @@ export default function DeviceOtaView() {
                   : "Flash all connected devices"
             }
           >
+            <svg viewBox="0 0 24 24" className={"h-4 w-4 " + (pushing ? "animate-spin" : "")} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              {pushing ? <path d="M21 12a9 9 0 1 1-2.64-6.36" /> : <path d="M12 3v10M8 9l4 4 4-4M5 21h14" />}
+            </svg>
             {pushing ? "Sending…" : "Update all devices"}
           </button>
         </div>
@@ -350,7 +359,7 @@ export default function DeviceOtaView() {
                         ? "bg-red-500/15 text-red-700 dark:bg-red-900/60 dark:text-red-200"
                         : d.ota_status === "requested"
                           ? "bg-accent/15 text-accent dark:bg-accent/25 dark:text-accent"
-                          : "bg-panel-2 text-ink-muted")
+                          : "bg-emerald-500/15 text-emerald-700 dark:bg-green-900/60 dark:text-green-300")
                   }
                 >
                   {d.ota_status === "no_response" ? "no response" : d.ota_status ?? "connected"}
@@ -361,9 +370,12 @@ export default function DeviceOtaView() {
                   onClick={() => deployOne(d.id, d.name ?? "this device")}
                   disabled={!firmware?.stored}
                   title="Deploy firmware to this device"
-                  className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-xs text-ink hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Deploy firmware to this device"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line text-ink hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Deploy
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v10M8 9l4 4 4-4M5 21h14" />
+                  </svg>
                 </button>
                 <button
                   type="button"

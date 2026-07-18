@@ -74,6 +74,30 @@ export function saveConfig(cfg: ProviderConfig) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
 }
 
+// The list of models a successful connection test returned, cached so the dropdown stays
+// populated across visits without re-testing. Refreshed via the "refresh models" button.
+const MODELS_KEY = "aiexams.models";
+
+export function loadCachedModels(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MODELS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCachedModels(models: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MODELS_KEY, JSON.stringify(models));
+  } catch {
+    /* ignore */
+  }
+}
+
 // ── Account-synced settings ────────────────────────────────────────────────
 // All settings live in the signed-in account (server-side) and follow the user across
 // devices; localStorage is only an offline cache. The blob has three sections:

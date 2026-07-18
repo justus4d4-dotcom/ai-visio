@@ -44,6 +44,7 @@ export default function UpdateView() {
   const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [showAllReleases, setShowAllReleases] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -145,9 +146,22 @@ export default function UpdateView() {
         <button
           onClick={loadStatus}
           disabled={loading || applying}
-          className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-40"
+          title="Check for updates"
+          aria-label="Check for updates"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-line hover:bg-panel-2 disabled:opacity-40"
         >
-          {loading ? "Checking…" : "Check again"}
+          <svg
+            viewBox="0 0 24 24"
+            className={"h-4 w-4 " + (loading ? "animate-spin" : "")}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
         </button>
       </div>
 
@@ -213,11 +227,21 @@ export default function UpdateView() {
                 }
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {applying || status.in_progress
-                  ? "Updating…"
-                  : status.update_available
-                    ? `Update to ${status.latest_version}`
-                    : "Update now"}
+                {applying || status.in_progress ? (
+                  <span className="flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                    </svg>
+                    Updating…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+                    </svg>
+                    {status.update_available ? `Update to ${status.latest_version}` : "Update now"}
+                  </span>
+                )}
               </button>
               {!status.can_apply && (
                 <span className="text-xs text-ink-muted">
@@ -268,7 +292,7 @@ export default function UpdateView() {
               </p>
             ) : (
               <ul className="mt-2 space-y-2">
-                {status.releases.map((r) => {
+                {(showAllReleases ? status.releases : status.releases.slice(0, 4)).map((r) => {
                   const isCurrent =
                     r.tag.replace(/^v/i, "") ===
                     status.current_version.replace(/^v/i, "").replace(/-dirty$/, "");
@@ -328,6 +352,27 @@ export default function UpdateView() {
                   );
                 })}
               </ul>
+            )}
+            {status.releases.length > 4 && (
+              <button
+                onClick={() => setShowAllReleases((v) => !v)}
+                className="mt-3 flex items-center gap-1 text-xs text-accent hover:underline"
+              >
+                {showAllReleases
+                  ? "View less"
+                  : `View more (${status.releases.length - 4})`}
+                <svg
+                  viewBox="0 0 24 24"
+                  className={"h-3.5 w-3.5 transition-transform " + (showAllReleases ? "rotate-180" : "")}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
             )}
           </section>
         </>

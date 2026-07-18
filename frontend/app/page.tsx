@@ -7,6 +7,8 @@ import {
   DEFAULT_GEMINI_MODELS,
   cachedAccount,
   loadAccount,
+  loadCachedModels,
+  saveCachedModels,
   saveProvider,
   type ProviderConfig,
   type SolveResult,
@@ -498,8 +500,8 @@ export default function Home() {
   const sourceLabel =
     captureSource === "camera"
       ? cameraOnline
-        ? "iPhone online"
-        : "iPhone offline"
+        ? "Camera online"
+        : "Camera offline"
       : captureSource === "agent"
         ? agentOnline
           ? "Agent online"
@@ -573,17 +575,19 @@ export default function Home() {
         <div className="inline-flex gap-1 rounded-full border border-line bg-app p-1 text-sm">
           {(
             [
-              ["agent", "Native app", agentOnline],
+              ["agent", "App", agentOnline],
               ["browser", "Browser", true],
-              ["camera", "iPhone", cameraOnline],
+              ["camera", "Camera", cameraOnline],
             ] as const
-          ).map(([src, label, online]) => (
+          ).map(([src, label, online]) => {
+            const selected = captureSource === src;
+            return (
             <button
               key={src}
               onClick={() => selectSource(src)}
               className={
                 "flex items-center gap-2 rounded-full px-3 py-1 transition " +
-                (captureSource === src
+                (selected
                   ? "bg-accent font-medium text-accent-ink"
                   : "text-ink-muted hover:text-ink")
               }
@@ -593,12 +597,19 @@ export default function Home() {
                 <span
                   className={
                     "inline-block h-1.5 w-1.5 rounded-full " +
-                    (online ? "bg-sage" : "bg-taupe-grey")
+                    (selected
+                      ? online
+                        ? "bg-accent-ink"
+                        : "bg-accent-ink/40"
+                      : online
+                        ? "bg-sage"
+                        : "bg-taupe-grey")
                   }
                 />
               )}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* Browser capture start/stop */}
@@ -652,7 +663,7 @@ export default function Home() {
       <div className="mt-4 grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-4">
         {/* Top-left: screen / camera preview. */}
         <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-panel p-3">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-black">
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-panel-2">
             {/* Browser capture shows the live getDisplayMedia stream. */}
             <video
               ref={videoRef}
@@ -668,23 +679,21 @@ export default function Home() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={agentFrameUrl}
-                  alt={captureSource === "camera" ? "iPhone camera" : "Native agent screen"}
+                  alt={captureSource === "camera" ? "Camera" : "App screen"}
                   className="h-full w-full object-contain"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm text-neutral-500">
-                  {captureSource === "camera"
-                    ? cameraOnline
-                      ? "iPhone streaming — waiting for a frame…"
-                      : "iPhone offline — open /camera on the phone and start streaming"
-                    : agentOnline
-                      ? "Native agent online — waiting for a frame…"
-                      : "Native agent offline — start it to see a preview"}
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                  {previewOnline ? (
+                    <p className="text-sm text-ink-muted">Waiting for a frame…</p>
+                  ) : (
+                    <OfflineAlert label={captureSource === "camera" ? "Camera offline" : "App offline"} />
+                  )}
                 </div>
               ))}
             {captureSource === "browser" && !capturing && (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-neutral-500">
-                Start capture to preview the screen
+              <div className="absolute inset-0 flex items-center justify-center p-4">
+                <OfflineAlert label="Browser offline" />
               </div>
             )}
           </div>
@@ -703,7 +712,12 @@ export default function Home() {
 
         {/* Top-right: interpreted result (display only). */}
         <section className="min-h-0 overflow-auto">
-          <ResultPanel busy={busy} result={result} />
+          <ResultPanel
+            busy={busy}
+            result={result}
+            onSolve={solveNow}
+            canSolve={previewOnline && !busy}
+          />
         </section>
 
         {/* Bottom-left: case study. */}
@@ -712,7 +726,7 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <h2 className="text-sm font-medium text-ink">Case study</h2>
-                <InfoHint text="Capture the 'fake company' scenario screens first. Their text is cached and sent with every solve so the model answers the question using the case requirements. On the ESP32, swipe up to enter case-study mode, tap the camera per screen, then Complete." />
+                <InfoHint text="Capture the 'fake company' scenario screens first. Their text is cached and sent with every solve so the model answers the question using the case requirements. On the Display, swipe up to enter case-study mode, tap the camera per screen, then Complete." />
               </div>
               <span className="flex items-center gap-2 text-xs text-ink-muted">
                 <span
@@ -815,9 +829,13 @@ function InfoHint({ text }: { text: string }) {
 function ResultPanel({
   busy,
   result,
+  onSolve,
+  canSolve,
 }: {
   busy: boolean;
   result: SolveResult | null;
+  onSolve: () => void;
+  canSolve: boolean;
 }) {
   if (busy) {
     return (
@@ -834,13 +852,46 @@ function ResultPanel({
       </div>
     );
   }
-  return <AnswerCard result={result} />;
+  return <AnswerCard result={result} onSolve={onSolve} canSolve={canSolve} />;
 }
 
-function AnswerCard({ result }: { result: SolveResult | null }) {
+// Small alert shown over the (grey) preview when the selected source isn't available.
+function OfflineAlert({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm font-medium text-ink shadow-sm">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 text-ink-muted" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v5" strokeLinecap="round" />
+        <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
+      </svg>
+      {label}
+    </div>
+  );
+}
+
+function AnswerCard({
+  result,
+  onSolve,
+  canSolve,
+}: {
+  result: SolveResult | null;
+  onSolve: () => void;
+  canSolve: boolean;
+}) {
   if (!result) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center">
+      <button
+        type="button"
+        onClick={canSolve ? onSolve : undefined}
+        disabled={!canSolve}
+        title={canSolve ? "Interpret the current frame" : undefined}
+        className={
+          "flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center " +
+          (canSolve
+            ? "cursor-pointer transition hover:border-accent active:scale-[0.99]"
+            : "cursor-default")
+        }
+      >
         <div className="flex h-14 w-14 items-center justify-center rounded-full border border-line text-ink-muted">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6">
             <circle cx="12" cy="12" r="9" />
@@ -849,9 +900,11 @@ function AnswerCard({ result }: { result: SolveResult | null }) {
         </div>
         <p className="text-sm font-medium text-ink">Waiting for a result</p>
         <p className="text-xs text-ink-muted">
-          Turn on Auto-detect or trigger a read from the ESP32 device.
+          {canSolve
+            ? "Tap to interpret the current frame."
+            : "Turn on Auto-detect or trigger a read from the Display."}
         </p>
-      </div>
+      </button>
     );
   }
   const conf = Math.round(result.confidence * 100);
@@ -996,8 +1049,10 @@ function SettingsPanel({
 }) {
   const set = (patch: Partial<ProviderConfig>) => onChange({ ...cfg, ...patch });
 
-  const [models, setModels] = useState<string[]>([]);
+  const [provider, setProvider] = useState("google");
+  const [models, setModels] = useState<string[]>(() => loadCachedModels());
   const [testing, setTesting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [testOk, setTestOk] = useState<boolean | null>(null);
   const [testMsg, setTestMsg] = useState<string | null>(null);
 
@@ -1026,6 +1081,7 @@ function SettingsPanel({
       if (!res.ok) throw new Error(data.detail ?? `Failed (${res.status})`);
       const list: string[] = data.models ?? [];
       setModels(list);
+      saveCachedModels(list);
       setTestOk(true);
       setTestMsg(`Connected — ${list.length} models available.`);
     } catch (e) {
@@ -1033,6 +1089,29 @@ function SettingsPanel({
       setTestMsg(e instanceof Error ? e.message : "Connection failed.");
     } finally {
       setTesting(false);
+    }
+  }
+
+  // Re-fetch just the model list (no status message) for the refresh button.
+  async function refreshModels() {
+    if (!cfg.api_key) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/providers/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const list: string[] = data.models ?? [];
+        setModels(list);
+        saveCachedModels(list);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -1046,21 +1125,35 @@ function SettingsPanel({
 
   return (
     <div>
-      <p className="text-xs text-ink-muted">
-        Get a key at{" "}
-        <a
-          className="underline"
-          href="https://aistudio.google.com/apikey"
-          target="_blank"
-          rel="noreferrer"
-        >
-          aistudio.google.com/apikey
-        </a>
-        . Stored only in this browser for now. <i>lite</i> models are the cheapest.
-      </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs">
+          Model provider
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className="mt-1 w-full rounded border border-line bg-app p-2 text-sm"
+          >
+            <option value="google">Google Gemini</option>
+          </select>
+        </label>
+        {provider === "google" && (
+          <a
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 self-end pb-2 text-xs text-accent hover:underline"
+          >
+            Get an API key at aistudio.google.com
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 17 17 7M8 7h9v9" />
+            </svg>
+          </a>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="col-span-full text-xs">
-          Gemini API key
+          API key
           <input
             type="password"
             value={cfg.api_key}
@@ -1071,7 +1164,30 @@ function SettingsPanel({
         </label>
 
         <label className="text-xs">
-          Model
+          <span className="flex items-center justify-between">
+            Model
+            <button
+              type="button"
+              onClick={refreshModels}
+              disabled={!cfg.api_key || refreshing}
+              title="Refresh available models"
+              aria-label="Refresh available models"
+              className="text-ink-muted hover:text-ink disabled:opacity-40"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className={"h-3.5 w-3.5 " + (refreshing ? "animate-spin" : "")}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <path d="M21 3v6h-6" />
+              </svg>
+            </button>
+          </span>
           <select
             value={sortedModels.includes(cfg.model) ? cfg.model : CUSTOM}
             onChange={(e) => {
@@ -1099,8 +1215,12 @@ function SettingsPanel({
       </div>
 
       <details className="mt-4 rounded-lg border border-line bg-panel/50 p-3">
-        <summary className="cursor-pointer select-none text-sm font-medium text-ink">
-          Fine-tuning · quality vs speed
+        <summary className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-ink">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-ink-muted" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          Advanced settings
         </summary>
         <p className="mt-1 text-xs text-ink-muted">
           Bigger images / higher detail / thinking &amp; escalation improve accuracy but
@@ -1258,9 +1378,19 @@ function SettingsPanel({
         <button
           onClick={testConnection}
           disabled={testing || !cfg.api_key}
-          className="rounded-lg border border-line px-4 py-2 text-sm hover:bg-panel-2 disabled:opacity-40"
+          title="Test connection"
+          aria-label="Test connection"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line hover:bg-panel-2 disabled:opacity-40"
         >
-          {testing ? "Testing…" : "Test connection"}
+          {testing ? (
+            <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin text-ink-muted" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M13 2 3 14h7l-1 8 10-12h-7z" />
+            </svg>
+          )}
         </button>
         {testMsg && (
           <span className={"text-xs " + (testOk ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
