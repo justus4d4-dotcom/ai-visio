@@ -124,15 +124,17 @@ def friendly_provider_error(exc: Exception) -> str:
 def is_unreadable(result: SolveResult) -> bool:
     """True when Gemini produced no usable answer at all for the frame.
 
-    Since Feature 4 the model is instructed to ALWAYS answer, so this now only catches
-    the degenerate case where nothing came back (blocked/truncated output): no full
-    answer, no short answer, and no letters. Such results are worth one escalation retry
-    with a more capable model.
+    Since Feature 4 the model is instructed to ALWAYS answer, so this now mainly catches
+    the degenerate case where the structured output could not be parsed (blocked or
+    truncated) — signalled by the NO_ANSWER_TEXT sentinel — or an otherwise empty result.
+    Such results are worth one escalation retry with a more capable model.
     """
+    if result.answer_text == NO_ANSWER_TEXT:
+        return True
     has_content = bool(
         (result.full_answer or "").strip()
         or result.answer_letters
-        or ((result.answer_text or "").strip() and result.answer_text != NO_ANSWER_TEXT)
+        or (result.answer_text or "").strip()
     )
     return not has_content
 
@@ -206,29 +208,110 @@ def _generate_with_retry(client, model, data, mime, config, prompt):
         raise last_exc
 
 
-def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
-    client = _client(cfg)
-    data, mime = _downscale_png(image_bytes, cfg.max_edge)
+# Minimum output-token budget for the structured JSON. The response must contain the
+# full_answer field, so a small cap (e.g. a stale 200-token client config, or a rich
+# screen whose answer overflows the default) truncates the JSON and makes it
+# unparseable. On a MAX_TOKENS truncation we retry once with at least this many tokens.
+_MIN_JSON_TOKENS = 1200
 
-    config = types.GenerateContentConfig(
+
+def _build_config(cfg: GeminiConfig, max_output_tokens: int) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=_GeminiAnswer,
         temperature=cfg.temperature,
         # thinking_budget=0 disables "thinking" (fastest). media_resolution controls how
         # finely the frame is tokenised. Both are user-tunable in Settings.
         thinking_config=types.ThinkingConfig(thinking_budget=cfg.thinking_budget),
-        max_output_tokens=cfg.max_output_tokens,
+        max_output_tokens=max_output_tokens,
         media_resolution=_MEDIA_RES.get(
             cfg.media_resolution, types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
         ),
     )
+
+
+def _parse(resp) -> _GeminiAnswer | None:
+    """The SDK-parsed answer, with a manual fallback if .parsed wasn't populated but the
+    text is nonetheless valid JSON for our schema."""
+    parsed = getattr(resp, "parsed", None)
+    if parsed is not None:
+        return parsed
+    try:
+        text = resp.text
+    except Exception:  # noqa: BLE001 - .text raises when there are no candidates
+        text = None
+    if text:
+        try:
+            return _GeminiAnswer.model_validate_json(text)
+        except Exception:  # noqa: BLE001 - truncated/invalid JSON: treat as no answer
+            return None
+    return None
+
+
+def _response_meta(resp) -> tuple[str | None, str | None]:
+    """(finish_reason, block_reason) names if present, else None — used to explain why a
+    response could not be parsed (e.g. "MAX_TOKENS" truncation vs a safety "SAFETY" block)."""
+    finish = block = None
+    try:
+        cand = (getattr(resp, "candidates", None) or [None])[0]
+        fr = getattr(cand, "finish_reason", None) if cand is not None else None
+        finish = getattr(fr, "name", None) or (str(fr) if fr else None)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        fb = getattr(resp, "prompt_feedback", None)
+        br = getattr(fb, "block_reason", None) if fb is not None else None
+        block = getattr(br, "name", None) or (str(br) if br else None)
+    except Exception:  # noqa: BLE001
+        pass
+    return finish, block
+
+
+def _no_parse_message(finish: str | None, block: str | None) -> str:
+    """A user-facing explanation for an unparseable response, based on the real reason."""
+    if block:
+        return (
+            f"The response was blocked by a safety filter ({block}). Try another model "
+            "or rephrase the on-screen content."
+        )
+    if finish == "MAX_TOKENS":
+        return (
+            "The answer was longer than the token limit and got cut off. Raise "
+            "'Max answer tokens' in Settings and try again."
+        )
+    return (
+        "The screen could not be read clearly this time (empty response). Try "
+        "re-triggering, or adjust the image size / detail in Settings."
+    )
+
+
+def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
+    client = _client(cfg)
+    data, mime = _downscale_png(image_bytes, cfg.max_edge)
 
     # Prompt: a user override replaces the default; extra context is appended to either.
     prompt = cfg.system_prompt.strip() or PROMPT
     if cfg.extra_context.strip():
         prompt = f"{prompt}\n\nAdditional context from the user:\n{cfg.extra_context.strip()}"
 
-    resp = _generate_with_retry(client, cfg.model, data, mime, config, prompt)
+    resp = _generate_with_retry(
+        client, cfg.model, data, mime, _build_config(cfg, cfg.max_output_tokens), prompt
+    )
+    parsed = _parse(resp)
+    finish, block = _response_meta(resp)
+
+    # The structured JSON must carry the full_answer field, so a small/stale output cap
+    # (e.g. an old 200-token client config) truncates the JSON mid-object and it can't be
+    # parsed. If that happened, retry ONCE with a larger budget before giving up — this is
+    # the common "it fails even on a clean screen" case.
+    if parsed is None and finish == "MAX_TOKENS":
+        bumped = min(4096, max(_MIN_JSON_TOKENS, cfg.max_output_tokens * 2))
+        if bumped > cfg.max_output_tokens:
+            resp = _generate_with_retry(
+                client, cfg.model, data, mime, _build_config(cfg, bumped), prompt
+            )
+            parsed = _parse(resp)
+            finish, block = _response_meta(resp)
 
     prompt_tokens = output_tokens = total_tokens = None
     if resp.usage_metadata is not None:
@@ -237,21 +320,17 @@ def solve_image(image_bytes: bytes, cfg: GeminiConfig) -> SolveResult:
         total_tokens = resp.usage_metadata.total_token_count
     cost = pricing.estimate_cost(cfg.model, prompt_tokens, output_tokens)
 
-    parsed: _GeminiAnswer | None = resp.parsed
     if parsed is None:
-        # Gemini returned no parseable structured output (blocked or truncated). Feature 4
-        # says always return something, so we surface a graceful best-effort message
-        # instead of an empty answer. The call is still metered.
+        # No parseable structured output. Feature 4 says always return something, so we
+        # surface a message explaining the *actual* reason (truncated vs blocked) instead
+        # of a generic one, and keep answer_text as the sentinel so is_unreadable() lets
+        # the caller escalate to a stronger model. The call is still metered.
         return SolveResult(
             question_text="",
             question_type="general",
             answer_letters=[],
             answer_text=NO_ANSWER_TEXT,
-            full_answer=(
-                "The screen could not be read clearly this time (the response was empty "
-                "or blocked). Try re-triggering, or adjust the image size / detail in "
-                "Settings."
-            ),
+            full_answer=_no_parse_message(finish, block),
             confidence=0.0,
             reasoning=None,
             model=cfg.model,
