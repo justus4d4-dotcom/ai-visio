@@ -459,6 +459,13 @@ async def device_ws(ws: WebSocket) -> None:
                 hub.set_ota_status(
                     cid, str(msg.get("status") or "unknown"), msg.get("progress")
                 )
+            elif msg.get("type") == "case_exit":
+                # The device left case-study mode: tell the browser (via the poll) to drop
+                # all cached scenario pages/content for a fresh start next time.
+                _state["pending"] = True
+                _state["trigger_id"] = str(uuid.uuid4())
+                _state["action"] = "clear_case"
+                _state["status"] = "requested"
     except WebSocketDisconnect:
         hub.disconnect(cid)
     except Exception:  # noqa: BLE001

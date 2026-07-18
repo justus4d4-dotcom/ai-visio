@@ -67,27 +67,31 @@ and set a low confidence.
 
 First identify the answer FORMAT and set question_type:
 - "single": multiple choice with exactly ONE correct option — usually round radio buttons \
-/ circles. Put the ONE correct option label in answer_letters.
+/ circles. Put the ONE correct option letter in answer_letters.
 - "multi": a question where MORE THAN ONE option is correct — checkboxes or a multi-select \
-dropdown. Put ALL correct option labels in answer_letters.
+dropdown. Put ALL correct option letters in answer_letters.
 - "truefalse": a true/false question. Put "True" or "False" in answer_letters.
 - "draganddrop": an ordering / matching / drag-and-drop question. Put the correct sequence \
-or matches (in order) in answer_letters and spell them out clearly in full_answer.
+of option letters (in order) in answer_letters and spell them out clearly in full_answer.
 - "general": anything that is NOT a selectable-option question (free text, a task, code, a \
 chart, a dialog, a screen to explain).
 
-Option labels: use EXACTLY the labels shown on screen — letters (A, B, C, D) or numbers \
-(1, 2, 3, 4). Never invent labels.
+Option letters: ALWAYS label the options A, B, C, D, E… by their order on the screen (the \
+first option is A, the second B, and so on) — EVEN IF the screen numbers them 1, 2, 3, 4 \
+or shows no labels. Put ONLY these letters in answer_letters (uppercase). Never put a \
+number or the raw option text in answer_letters.
 
 Fields to return:
 - question_text: the exact question, or a short description of what is on the screen.
-- answer_letters: the correct option label(s) as described above. EMPTY ([]) only for \
-"general", or when the screen genuinely has no selectable options.
-- answer_text: a SHORT one-line answer for a tiny round display (max ~12 words). For any \
-choice question it MUST lead with the option label(s), e.g. "B — use IAM roles".
+- answer_letters: the correct option letter(s) A–E as described above (or "True"/"False" \
+for truefalse). EMPTY ([]) only for "general", or when the screen genuinely has no \
+selectable options.
+- answer_text: a SHORT subtext (max ~10 words) describing the chosen answer, shown UNDER \
+the big letter on the tiny display. Do NOT repeat the letter here — just the description \
+(e.g. for answer A "use IAM roles").
 - full_answer: the COMPLETE answer for a tablet. For ANY choice question (single / multi / \
 truefalse / draganddrop) it MUST START with the correct answer on the first line — e.g. \
-"Answer: C" or "Answer: A, D" or "Order: 3, 1, 2" — and THEN give a concise explanation of \
+"Answer: C" or "Answer: A, D" or "Order: C, A, B" — and THEN give a concise explanation of \
 why. For "general" screens, give the full answer directly. Always fill this in.
 - confidence: 0..1, reflecting how clearly the screen reads.
 

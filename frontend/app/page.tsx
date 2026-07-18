@@ -92,6 +92,7 @@ export default function Home() {
   // reads the requirements before answering the question screen. Held in the browser.
   const [caseScenarios, setCaseScenarios] = useState<string[]>([]);
   const [caseBusy, setCaseBusy] = useState(false);
+  const [showCaseContent, setShowCaseContent] = useState(false);
   const caseScenariosRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -434,6 +435,9 @@ export default function Home() {
             // current screen, then report the running count back to the device.
             const ok = await captureScenario();
             await post("scenario", { ok, count: caseScenariosRef.current.length });
+          } else if (poll.action === "clear_case") {
+            // The device left case-study mode: drop all cached scenario content.
+            clearCase();
           } else {
             setRemoteStatus("solving");
             await post("status", { status: "solving" });
@@ -813,6 +817,33 @@ export default function Home() {
                 Clear
               </button>
             </div>
+            {caseScenarios.length > 0 && (
+              <div className="mt-3 border-t border-neutral-800 pt-3">
+                <button
+                  onClick={() => setShowCaseContent((v) => !v)}
+                  className="text-xs text-indigo-400 hover:underline"
+                >
+                  {showCaseContent
+                    ? "Hide cached content"
+                    : `Show cached content (${caseScenarios.length})`}
+                </button>
+                {showCaseContent && (
+                  <div className="mt-2 max-h-56 space-y-2 overflow-auto">
+                    {caseScenarios.map((s, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-neutral-800 bg-neutral-950 p-2"
+                      >
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-500">
+                          Screen {i + 1}
+                        </p>
+                        <p className="whitespace-pre-wrap text-xs text-neutral-300">{s}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <RecentAnswers

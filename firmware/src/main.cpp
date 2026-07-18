@@ -115,6 +115,11 @@ static uint32_t g_caseFlashAt = 0;       // millis() of the last success/failure
 static bool g_caseLastOk = true;         // outcome of the last capture (for the flash)
 static const uint32_t CASE_CAPTURE_TIMEOUT_MS = 12000;
 
+// Case-study has two sub-pages you switch between: page 0 captures the scenario screens,
+// page 1 solves the questions (which use the cached scenario as context).
+static uint8_t g_casePage = 0;      // 0 = capture, 1 = solve
+static bool g_caseSolving = false;  // a solve is in flight on the solve page
+
 // Firmware OTA (HTTP): set when the backend broadcasts {"type":"ota"}. The blocking
 // download + flash runs from loop() (never inside the WebSocket receive callback).
 static bool g_otaRequested = false;
@@ -165,13 +170,14 @@ static void renderConnecting(const char* line) {
   canvas.pushSprite(0, 0);
 }
 
-// A small "Case Study" entry button drawn at the top of the idle/answer screens.
+// A small filled "Case Study" pill near the top of the idle/answer screens, sized and
+// positioned to sit fully inside the round display (not clipped by the bezel).
 static void drawCaseButton() {
-  const int bw = 116, bh = 30, by = 8;
+  const int bw = 92, bh = 28, by = 26;
   const int bx = CX - bw / 2;
-  canvas.drawRoundRect(bx, by, bw, bh, 8, COL_ACCENT);
+  canvas.fillRoundRect(bx, by, bw, bh, 14, COL_ACCENT);
   canvas.setTextDatum(textdatum_t::middle_center);
-  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextColor(COL_BG, COL_ACCENT);
   canvas.setTextSize(1);
   canvas.drawString("Case Study", CX, by + bh / 2);
 }
@@ -300,63 +306,101 @@ static void drawCameraIcon(int cx, int cy, int s, uint16_t col) {
   canvas.fillCircle(cx, cy, s / 6, COL_BG);
 }
 
-// Case-study capture screen: a "Case Study" label at the top, a big camera to tap for
-// each scenario screen (with a capturing spinner / saved flash), the running count, and a
-// "Complete" button at the bottom. Swipe up (or Complete) leaves case-study mode.
-static void renderCaseStudy() {
+// Small pill at the top of the case-study screens to switch between the two pages.
+static void drawCaseSwitchTab(const char* label) {
+  const int bw = 100, bh = 26, by = 26;
+  const int bx = CX - bw / 2;
+  canvas.drawRoundRect(bx, by, bw, bh, 13, COL_ACCENT);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextSize(1);
+  canvas.drawString(label, CX, by + bh / 2);
+}
+
+// "Exit & clear" button at the bottom of the case-study screens.
+static void drawCaseExitButton() {
+  const int bw = 116, bh = 30, by = (int)H - 44;
+  const int bx = CX - bw / 2;
+  canvas.fillRoundRect(bx, by, bw, bh, 8, COL_BAD);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_BG, COL_BAD);
+  canvas.setTextSize(1);
+  canvas.drawString("Exit & clear", CX, by + bh / 2);
+}
+
+// Case-study page 1 — capture: tap the camera to cache each scenario screen.
+static void renderCaseCapture() {
   canvas.fillScreen(COL_BG);
   canvas.setTextDatum(textdatum_t::middle_center);
+  drawCaseSwitchTab("Go to Solve");
 
-  // Top label + exit hint.
-  canvas.setTextColor(COL_ACCENT, COL_BG);
-  canvas.setTextSize(2);
-  canvas.drawString("Case Study", CX, 24);
-  canvas.setTextColor(COL_MUTED, COL_BG);
-  canvas.setTextSize(1);
-  canvas.drawString("tap Complete to exit", CX, 44);
-
-  // Centre: capturing spinner, a success/failure flash, or the tappable camera.
   const bool flashing = g_caseFlashAt && (millis() - g_caseFlashAt < 1600);
   if (g_caseCapturing) {
     const int sweep = (millis() / 4) % 360;
-    canvas.fillArc(CX, CY, 38, 44, sweep, sweep + 80, COL_ACCENT);
+    canvas.fillArc(CX, CY - 6, 32, 38, sweep, sweep + 80, COL_ACCENT);
     canvas.setTextColor(COL_TEXT, COL_BG);
     canvas.setTextSize(1);
-    canvas.drawString("Reading...", CX, CY);
+    canvas.drawString("Reading...", CX, CY - 6);
   } else if (flashing) {
     canvas.setTextColor(g_caseLastOk ? COL_GOOD : COL_BAD, COL_BG);
     canvas.setTextSize(2);
-    canvas.drawString(g_caseLastOk ? "Saved" : "Failed", CX, CY - 6);
-    if (g_caseLastOk) {
-      canvas.setTextSize(1);
-      canvas.setTextColor(COL_MUTED, COL_BG);
-      char b[24];
-      snprintf(b, sizeof(b), "screen %d", g_caseCount);
-      canvas.drawString(b, CX, CY + 16);
-    }
+    canvas.drawString(g_caseLastOk ? "Saved" : "Failed", CX, CY - 8);
   } else {
-    drawCameraIcon(CX, CY - 4, 22, COL_ACCENT);
+    drawCameraIcon(CX, CY - 10, 20, COL_ACCENT);
     canvas.setTextColor(COL_MUTED, COL_BG);
     canvas.setTextSize(1);
-    canvas.drawString("Tap to capture", CX, CY + 34);
+    canvas.drawString("Tap to capture", CX, CY + 22);
   }
 
-  // Running count.
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.setTextSize(1);
   char c[24];
-  snprintf(c, sizeof(c), "Screens cached: %d", g_caseCount);
-  canvas.drawString(c, CX, H - 66);
+  snprintf(c, sizeof(c), "Screens: %d", g_caseCount);
+  canvas.drawString(c, CX, H - 60);
 
-  // Complete button (bottom).
-  const int bw = 124, bh = 30;
-  const int bx = CX - bw / 2, by = (int)H - 46;
-  canvas.fillRoundRect(bx, by, bw, bh, 8, COL_GOOD);
-  canvas.setTextColor(COL_BG, COL_GOOD);
-  canvas.setTextSize(2);
-  canvas.drawString("Complete", CX, by + bh / 2);
-
+  drawCaseExitButton();
   canvas.pushSprite(0, 0);
+}
+
+// Case-study page 2 — solve: tap to answer the question using the cached scenario.
+static void renderCaseSolve() {
+  canvas.fillScreen(COL_BG);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  drawCaseSwitchTab("Go to Capture");
+
+  if (g_caseSolving) {
+    const int sweep = (millis() / 4) % 360;
+    canvas.fillArc(CX, CY - 6, 32, 38, sweep, sweep + 80, COL_ACCENT);
+    canvas.setTextColor(COL_TEXT, COL_BG);
+    canvas.setTextSize(1);
+    canvas.drawString("Thinking", CX, CY - 6);
+  } else if (g_answer.letters.length() || g_answer.text.length()) {
+    const char* letters = g_answer.letters.length() ? g_answer.letters.c_str() : "?";
+    int size = 6;
+    if (g_answer.letters.length() > 4) size = 4;
+    if (g_answer.letters.length() > 7) size = 3;
+    canvas.setTextColor(COL_TEXT, COL_BG);
+    canvas.setTextSize(size);
+    canvas.drawString(letters, CX, CY - 16);
+    canvas.setTextSize(1);
+    canvas.setTextColor(COL_MUTED, COL_BG);
+    drawWrappedCentered(g_answer.text, CX, CY + 22, W - 74, 12, 2);
+  } else {
+    canvas.setTextColor(COL_TEXT, COL_BG);
+    canvas.setTextSize(2);
+    canvas.drawString("Solve", CX, CY - 6);
+    canvas.setTextColor(COL_MUTED, COL_BG);
+    canvas.setTextSize(1);
+    canvas.drawString("tap to answer", CX, CY + 20);
+  }
+
+  drawCaseExitButton();
+  canvas.pushSprite(0, 0);
+}
+
+static void renderCaseStudy() {
+  if (g_casePage == 1) renderCaseSolve();
+  else renderCaseCapture();
 }
 
 static void renderOtaProgress(int pct) {
@@ -505,7 +549,9 @@ static void applyAnswer(JsonObjectConst a, const char* answerId) {
   g_answer.confidence = a["confidence"] | 0.0f;
   g_answer.cached = a["cached"] | false;
   g_lastAnswerId = String(answerId);
-  g_state = UiState::Answer;
+  g_caseSolving = false;
+  // In case-study mode the answer is shown on the solve page; don't leave the mode.
+  if (g_state != UiState::CaseStudy) g_state = UiState::Answer;
 }
 
 // Handle a JSON message pushed by the server over the WebSocket.
@@ -547,8 +593,15 @@ static void handleWsMessage(const uint8_t* payload, size_t len) {
   }
 
   if (strcmp(status, "error") == 0) {
-    g_errorMsg = "solve failed";
-    g_state = UiState::Error;
+    if (g_state == UiState::CaseStudy) {
+      // A solve failed on the case-study solve page: flash it, stay in the mode.
+      g_caseSolving = false;
+      g_caseLastOk = false;
+      g_caseFlashAt = millis();
+    } else {
+      g_errorMsg = "solve failed";
+      g_state = UiState::Error;
+    }
     return;
   }
 
@@ -616,6 +669,22 @@ static bool wsCaptureScenario() {
   return g_ws.sendTXT("{\"type\":\"capture_scenario\"}");
 }
 
+// Tell the browser to drop all cached scenario content (leaving case-study mode).
+static bool wsCaseExit() {
+  if (!g_wsConnected) return false;
+  return g_ws.sendTXT("{\"type\":\"case_exit\"}");
+}
+
+// Enter case-study mode fresh: start on the capture page with a cleared count.
+static void enterCaseStudy() {
+  g_caseCapturing = false;
+  g_caseSolving = false;
+  g_caseFlashAt = 0;
+  g_caseCount = 0;
+  g_casePage = 0;
+  g_state = UiState::CaseStudy;
+}
+
 // Download + flash firmware from the backend over HTTP (OTA). Blocking; on success the
 // HTTPUpdate library verifies the x-MD5 header and reboots into the new image.
 static void performHttpOta(const String& url) {
@@ -643,8 +712,12 @@ static bool touchPressed() {
   return lcd.getTouch(&x, &y);
 }
 
-// Poll the touch panel once and classify the gesture. A press released without
-// travelling is a tap; a downward drag that starts near the top edge is a
+// Taps whose press point is further than this from the centre are ignored, so resting a
+// finger on the round bezel/frame no longer triggers the on-screen buttons.
+static const int32_t TAP_RADIUS = 106;
+
+// Poll the touch panel once and classify the gesture. A press released without travelling
+// (and within the dial) is a tap; a downward drag that starts near the top edge is a
 // "swipe down" (opens WiFi settings).
 static void pollGestures(bool* tap, bool* swipeDown) {
   *tap = false;
@@ -665,7 +738,10 @@ static void pollGestures(bool* tap, bool* swipeDown) {
     }
   } else if (g_gestureActive) {
     g_gestureActive = false;
-    if (!g_gestureSwiped && (millis() - g_lastTouchAt) > TOUCH_DEBOUNCE_MS) {
+    const int32_t ddx = g_gestureStartX - CX;
+    const int32_t ddy = g_gestureStartY - CY;
+    const bool inDial = (ddx * ddx + ddy * ddy) <= TAP_RADIUS * TAP_RADIUS;
+    if (!g_gestureSwiped && inDial && (millis() - g_lastTouchAt) > TOUCH_DEBOUNCE_MS) {
       g_lastTouchAt = millis();
       *tap = true;
     }
@@ -677,10 +753,20 @@ static void pollGestures(bool* tap, bool* swipeDown) {
 // last press location is g_gestureStartX/Y (a tap barely moves).
 static bool tapInCaseButton() {
   const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
-  return g_gestureStartY >= 4 && g_gestureStartY <= 44 && dx <= 62;
+  return g_gestureStartY >= 20 && g_gestureStartY <= 58 && dx <= 52;
 }
 static bool tapInLowerHalf() {
   return g_gestureStartY > (int32_t)H / 2;
+}
+
+// Case-study screen regions: the page-switch pill (top), the exit button (bottom); a tap
+// anywhere else in the dial is the middle action (capture on page 0, solve on page 1).
+static bool tapCaseSwitch() {
+  const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
+  return g_gestureStartY >= 20 && g_gestureStartY <= 58 && dx <= 52;
+}
+static bool tapCaseExit() {
+  return g_gestureStartY > (int32_t)H - 50;
 }
 
 // ---------------------------------------------------------------------------
@@ -963,9 +1049,7 @@ void loop() {
       renderIdle();
       if (tapped) {
         if (tapInCaseButton()) {
-          g_caseCapturing = false;
-          g_caseFlashAt = 0;
-          g_state = UiState::CaseStudy;
+          enterCaseStudy();
         } else if (tapInLowerHalf() && wsTrigger()) {
           g_triggerAt = millis();
           g_state = UiState::Solving;
@@ -988,9 +1072,7 @@ void loop() {
       renderAnswer();
       if (tapped) {
         if (tapInCaseButton()) {  // top button → case-study mode
-          g_caseCapturing = false;
-          g_caseFlashAt = 0;
-          g_state = UiState::CaseStudy;
+          enterCaseStudy();
         } else if (tapInLowerHalf() && wsTrigger()) {  // lower half → solve next
           g_triggerAt = millis();
           g_state = UiState::Solving;
@@ -1002,23 +1084,38 @@ void loop() {
       break;
 
     case UiState::CaseStudy:
-      // Time out a capture that never got a result back.
+      // Time out a capture / solve that never got a result back.
       if (g_caseCapturing && millis() - g_caseCaptureAt > CASE_CAPTURE_TIMEOUT_MS) {
         g_caseCapturing = false;
         g_caseLastOk = false;
         g_caseFlashAt = millis();
       }
+      if (g_caseSolving && millis() - g_triggerAt > SOLVE_TIMEOUT_MS) {
+        g_caseSolving = false;
+        g_caseLastOk = false;
+        g_caseFlashAt = millis();
+      }
       renderCaseStudy();
       if (tapped) {
-        if (g_gestureStartY > (int32_t)H - 52) {
-          // Complete button → back to the answer screens.
+        if (tapCaseSwitch()) {
+          g_casePage ^= 1;  // toggle capture <-> solve
+          g_caseFlashAt = 0;
+        } else if (tapCaseExit()) {
+          wsCaseExit();     // clear the cached scenarios on the browser
           g_state = UiState::Idle;
-        } else if (!g_caseCapturing) {
-          // Camera / centre → capture this scenario screen.
-          if (wsCaptureScenario()) {
+        } else if (g_casePage == 0) {
+          if (!g_caseCapturing && wsCaptureScenario()) {
             g_caseCapturing = true;
             g_caseCaptureAt = millis();
-          } else {
+          } else if (!g_caseCapturing) {
+            g_caseLastOk = false;
+            g_caseFlashAt = millis();
+          }
+        } else {  // solve page
+          if (!g_caseSolving && wsTrigger()) {
+            g_caseSolving = true;
+            g_triggerAt = millis();
+          } else if (!g_caseSolving) {
             g_caseLastOk = false;
             g_caseFlashAt = millis();
           }
