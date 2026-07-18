@@ -165,17 +165,29 @@ static void renderConnecting(const char* line) {
   canvas.pushSprite(0, 0);
 }
 
+// A small "Case Study" entry button drawn at the top of the idle/answer screens.
+static void drawCaseButton() {
+  const int bw = 116, bh = 30, by = 8;
+  const int bx = CX - bw / 2;
+  canvas.drawRoundRect(bx, by, bw, bh, 8, COL_ACCENT);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextSize(1);
+  canvas.drawString("Case Study", CX, by + bh / 2);
+}
+
 static void renderIdle() {
   canvas.fillScreen(COL_BG);
   canvas.fillArc(CX, CY, CX - 6, CX - 2, 0, 360, COL_MUTED);
+  drawCaseButton();
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.setTextSize(2);
-  canvas.drawString("Tap to", CX, CY - 22);
-  canvas.drawString("solve", CX, CY + 4);
+  canvas.drawString("Solve", CX, CY - 6);
   canvas.setTextColor(COL_MUTED, COL_BG);
   canvas.setTextSize(1);
-  canvas.drawString(WiFi.localIP().toString().c_str(), CX, CY + 40);
+  canvas.drawString("tap lower half", CX, CY + 20);
+  canvas.drawString(WiFi.localIP().toString().c_str(), CX, CY + 46);
   canvas.pushSprite(0, 0);
 }
 
@@ -237,6 +249,7 @@ static void drawWrappedCentered(const String& text, int cx, int topY,
 static void renderAnswer() {
   canvas.fillScreen(COL_BG);
   drawConfidenceRing(g_answer.confidence);
+  drawCaseButton();
 
   canvas.setTextDatum(textdatum_t::middle_center);
 
@@ -300,7 +313,7 @@ static void renderCaseStudy() {
   canvas.drawString("Case Study", CX, 24);
   canvas.setTextColor(COL_MUTED, COL_BG);
   canvas.setTextSize(1);
-  canvas.drawString("swipe up to exit", CX, 44);
+  canvas.drawString("tap Complete to exit", CX, 44);
 
   // Centre: capturing spinner, a success/failure flash, or the tappable camera.
   const bool flashing = g_caseFlashAt && (millis() - g_caseFlashAt < 1600);
@@ -632,12 +645,10 @@ static bool touchPressed() {
 
 // Poll the touch panel once and classify the gesture. A press released without
 // travelling is a tap; a downward drag that starts near the top edge is a
-// "swipe down" (opens WiFi settings); an upward drag that starts near the bottom
-// edge is a "swipe up" (toggles case-study mode).
-static void pollGestures(bool* tap, bool* swipeDown, bool* swipeUp) {
+// "swipe down" (opens WiFi settings).
+static void pollGestures(bool* tap, bool* swipeDown) {
   *tap = false;
   *swipeDown = false;
-  *swipeUp = false;
 
   int32_t x, y;
   const bool now = lcd.getTouch(&x, &y);
@@ -651,10 +662,6 @@ static void pollGestures(bool* tap, bool* swipeDown, bool* swipeUp) {
                (y - g_gestureStartY) > SWIPE_MIN_DISTANCE) {
       g_gestureSwiped = true;
       *swipeDown = true;
-    } else if (!g_gestureSwiped && g_gestureStartY > (int32_t)H - SWIPE_TOP_ZONE &&
-               (g_gestureStartY - y) > SWIPE_MIN_DISTANCE) {
-      g_gestureSwiped = true;
-      *swipeUp = true;
     }
   } else if (g_gestureActive) {
     g_gestureActive = false;
@@ -663,6 +670,17 @@ static void pollGestures(bool* tap, bool* swipeDown, bool* swipeUp) {
       *tap = true;
     }
   }
+}
+
+// Tap regions on the idle/answer screens: a small "Case Study" button at the top, and
+// the lower half of the screen which triggers a solve (taps elsewhere are inert). The
+// last press location is g_gestureStartX/Y (a tap barely moves).
+static bool tapInCaseButton() {
+  const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
+  return g_gestureStartY >= 4 && g_gestureStartY <= 44 && dx <= 62;
+}
+static bool tapInLowerHalf() {
+  return g_gestureStartY > (int32_t)H / 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -930,22 +948,9 @@ void loop() {
 
   bool tapped = false;
   bool swipeDown = false;
-  bool swipeUp = false;
-  pollGestures(&tapped, &swipeDown, &swipeUp);
+  pollGestures(&tapped, &swipeDown);
   if (swipeDown) {
     openWifiSettings();
-    return;
-  }
-  if (swipeUp) {
-    // Toggle case-study mode from the normal answer screens.
-    if (g_state == UiState::CaseStudy) {
-      g_state = UiState::Idle;
-    } else if (g_state == UiState::Idle || g_state == UiState::Answer ||
-               g_state == UiState::Error) {
-      g_caseCapturing = false;
-      g_caseFlashAt = 0;
-      g_state = UiState::CaseStudy;
-    }
     return;
   }
 
@@ -957,10 +962,14 @@ void loop() {
     case UiState::Idle:
       renderIdle();
       if (tapped) {
-        if (wsTrigger()) {
+        if (tapInCaseButton()) {
+          g_caseCapturing = false;
+          g_caseFlashAt = 0;
+          g_state = UiState::CaseStudy;
+        } else if (tapInLowerHalf() && wsTrigger()) {
           g_triggerAt = millis();
           g_state = UiState::Solving;
-        } else {
+        } else if (tapInLowerHalf()) {
           g_errorMsg = "no link";
           g_state = UiState::Error;
         }
@@ -977,11 +986,15 @@ void loop() {
 
     case UiState::Answer:
       renderAnswer();
-      if (tapped) {  // tap again to solve the next question
-        if (wsTrigger()) {
+      if (tapped) {
+        if (tapInCaseButton()) {  // top button → case-study mode
+          g_caseCapturing = false;
+          g_caseFlashAt = 0;
+          g_state = UiState::CaseStudy;
+        } else if (tapInLowerHalf() && wsTrigger()) {  // lower half → solve next
           g_triggerAt = millis();
           g_state = UiState::Solving;
-        } else {
+        } else if (tapInLowerHalf()) {
           g_errorMsg = "no link";
           g_state = UiState::Error;
         }
