@@ -775,13 +775,33 @@ export default function Home() {
         </div>
 
         {/* Right column: interpreted result, full height. */}
-        <section className="flex-1">
-          <ResultPanel
-            busy={busy}
-            result={result}
-            onSolve={solveNow}
-            canSolve={previewOnline && !busy}
-          />
+        <section className="flex flex-1 flex-col gap-3">
+          <div className="min-h-0 flex-1">
+            <ResultPanel
+              busy={busy}
+              result={result}
+              onSolve={solveNow}
+              canSolve={previewOnline && !busy}
+            />
+          </div>
+          {caseScenarios.length > 0 && (
+            <details className="shrink-0 rounded-2xl border border-line bg-panel p-4">
+              <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+                Context ·{" "}
+                {caseScenarios.length} frame{caseScenarios.length === 1 ? "" : "s"}
+              </summary>
+              <div className="mt-3 max-h-64 space-y-2 overflow-auto">
+                {caseScenarios.map((s, i) => (
+                  <div key={i} className="rounded-lg border border-line bg-app p-2">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-ink-muted">
+                      Frame {i + 1}
+                    </p>
+                    <p className="whitespace-pre-wrap text-xs text-ink">{s}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </section>
       </div>
     </main>
