@@ -168,13 +168,16 @@ class DeviceHub:
         meta = self._meta.get(cid)
         if meta is not None:
             meta["ota_status"] = status
+            meta["ota_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             if progress is not None:
                 meta["ota_progress"] = progress
 
     def reset_ota(self, status: str) -> None:
         """Mark every connected device with an OTA status (called when an OTA starts)."""
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
         for meta in self._meta.values():
             meta["ota_status"] = status
+            meta["ota_at"] = now
             meta.pop("ota_progress", None)
 
     @property

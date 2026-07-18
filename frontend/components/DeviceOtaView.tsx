@@ -285,14 +285,14 @@ export default function DeviceOtaView() {
                   "rounded px-1.5 py-0.5 text-xs " +
                   (d.ota_status === "updating"
                     ? "bg-amber-900/70 text-amber-200"
-                    : d.ota_status === "failed"
+                    : d.ota_status === "failed" || d.ota_status === "no_response"
                       ? "bg-red-900/70 text-red-200"
                       : d.ota_status === "requested"
                         ? "bg-indigo-900/70 text-indigo-200"
                         : "bg-neutral-800 text-neutral-400")
                 }
               >
-                {d.ota_status ?? "connected"}
+                {d.ota_status === "no_response" ? "no response" : d.ota_status ?? "connected"}
                 {d.ota_progress != null ? ` ${d.ota_progress}%` : ""}
               </span>
             </li>
@@ -304,6 +304,16 @@ export default function DeviceOtaView() {
         Devices must be flashed once over USB first; afterwards firmware can be pushed here.
         Each display downloads the image over your LAN and reboots into it.
       </p>
+      {devices.some((d) => d.ota_status === "no_response") && (
+        <p className="mt-2 rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-300">
+          A device didn&apos;t respond to the update. That usually means it is still running
+          firmware from before OTA support was added, so it ignores the push. Flash it once
+          over USB or WiFi (<span className="font-mono">pio run -e waveshare-s3-round-ota -t
+          upload --upload-port &lt;device-ip&gt;</span>); after that, push-OTA works from here.
+          Also check the device&apos;s backend URL is the plain <span className="font-mono">http://LAN-IP:8000</span>
+          it can reach (not an HTTPS tunnel).
+        </p>
+      )}
     </div>
   );
 }

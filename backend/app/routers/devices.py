@@ -40,6 +40,10 @@ FIRMWARE_PATH = "/api/devices/firmware/binary"
 _ESP_IMAGE_MAGIC = 0xE9
 _MAX_FIRMWARE_BYTES = 8 * 1024 * 1024  # generous for a 16MB-flash S3 app partition
 
+# How long to wait for a device to report "updating" after an OTA is pushed before the UI
+# flags it as "no_response" (a device on the new firmware acks within ~1s).
+_OTA_ACK_GRACE_SECS = 20
+
 
 class FirmwareInfo(BaseModel):
     stored: bool
@@ -261,5 +265,22 @@ async def start_ota() -> OtaResult:
 
 @router.get("/connected")
 def connected_devices() -> dict[str, object]:
-    """Connected device count + metadata (incl. reported OTA status) for the UI."""
-    return {"count": hub.count, "devices": hub.devices()}
+    """Connected device count + metadata (incl. reported OTA status) for the UI.
+
+    A device that was told to update but never reported back within a grace period is
+    surfaced as ``no_response`` — almost always firmware without the OTA handler (it must
+    be flashed once over USB/espota before push-OTA can reach it).
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    devices: list[dict[str, object]] = []
+    for src in hub.devices():
+        d = dict(src)
+        if d.get("ota_status") == "requested" and d.get("ota_at"):
+            try:
+                age = (now - dt.datetime.fromisoformat(str(d["ota_at"]))).total_seconds()
+            except (TypeError, ValueError):
+                age = 0.0
+            if age > _OTA_ACK_GRACE_SECS:
+                d["ota_status"] = "no_response"
+        devices.append(d)
+    return {"count": hub.count, "devices": devices}
