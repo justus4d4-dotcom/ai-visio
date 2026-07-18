@@ -511,7 +511,7 @@ export default function Home() {
           : "Browser idle";
 
   return (
-    <main className="mx-auto flex h-[100dvh] max-w-6xl flex-col overflow-hidden p-4 sm:p-6">
+    <main className="mx-auto min-h-screen max-w-6xl p-4 sm:p-6">
       <TopNav
         onSettings={() => setShowSettings(true)}
         onAccountAction={(a: AccountAction) => {
@@ -657,13 +657,27 @@ export default function Home() {
           <StatusChip label={`${deviceCount} device${deviceCount === 1 ? "" : "s"}`} ok={deviceCount > 0} />
           {autoStatus !== "idle" && <span className="text-accent">{autoStatus}</span>}
           {remoteStatus !== "idle" && <span className="text-ink-muted">esp: {remoteStatus}</span>}
+          <button
+            type="button"
+            onClick={solveNow}
+            disabled={!previewOnline || busy}
+            title="Analyse the current frame"
+            className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+              <path d="M11 8v6M8 11h6" />
+            </svg>
+            {busy ? "Analysing…" : "Analyse"}
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-4">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         {/* Top-left: screen / camera preview. */}
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-panel p-3">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-panel-2">
+        <section className="flex flex-col rounded-2xl border border-line bg-panel p-3">
+          <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-panel-2">
             {/* Browser capture shows the live getDisplayMedia stream. */}
             <video
               ref={videoRef}
@@ -711,7 +725,7 @@ export default function Home() {
         </section>
 
         {/* Top-right: interpreted result (display only). */}
-        <section className="min-h-0 overflow-auto">
+        <section>
           <ResultPanel
             busy={busy}
             result={result}
@@ -721,8 +735,8 @@ export default function Home() {
         </section>
 
         {/* Bottom-left: case study. */}
-        <aside className="min-h-0 overflow-auto">
-          <div className="flex h-full flex-col rounded-2xl border border-line bg-panel p-4">
+        <aside>
+          <div className="rounded-2xl border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <h2 className="text-sm font-medium text-ink">Case study</h2>
@@ -790,7 +804,7 @@ export default function Home() {
         </aside>
 
         {/* Bottom-right: recent answers. */}
-        <div className="min-h-0 overflow-auto">
+        <div>
           <RecentAnswers
             refreshKey={historyTick}
             onOpenHistory={() => setShowHistory(true)}
@@ -839,7 +853,7 @@ function ResultPanel({
 }) {
   if (busy) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl border border-accent/40 bg-panel p-10">
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-accent/40 bg-panel p-10">
         <div className="flex items-end gap-1.5">
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.3s]" />
           <span className="h-3 w-3 animate-bounce rounded-full bg-accent [animation-delay:-0.15s]" />
@@ -886,7 +900,7 @@ function AnswerCard({
         disabled={!canSolve}
         title={canSolve ? "Interpret the current frame" : undefined}
         className={
-          "flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center " +
+          "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-panel p-8 text-center " +
           (canSolve
             ? "cursor-pointer transition hover:border-accent active:scale-[0.99]"
             : "cursor-default")
@@ -909,7 +923,7 @@ function AnswerCard({
   }
   const conf = Math.round(result.confidence * 100);
   return (
-    <div className="h-full rounded-2xl border border-line bg-panel p-6">
+    <div className="rounded-2xl border border-line bg-panel p-6">
       <div className="flex items-baseline justify-between">
         <span className="text-5xl font-bold tracking-wide text-emerald-600 dark:text-emerald-300">
           {result.answer_letters.join(" ") || "—"}
@@ -994,7 +1008,7 @@ function RecentAnswers({
   }, [refreshKey]);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-line bg-panel p-4">
+    <div className="flex flex-col rounded-2xl border border-line bg-panel p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-ink">Recent answers</h2>
         <button
