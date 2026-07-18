@@ -657,8 +657,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        {/* LEFT: live preview + interpreted answer. */}
+      <div className="mt-4 grid gap-6 lg:grid-cols-[3fr_2fr]">
+        {/* LEFT: live preview. */}
         <section className="space-y-4">
           <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-line bg-black">
             {/* Browser capture shows the live getDisplayMedia stream. */}
@@ -708,7 +708,10 @@ export default function Home() {
               {error}
             </p>
           )}
+        </section>
 
+        {/* RIGHT: interpreted answer. */}
+        <section>
           <ResultPanel
             busy={busy}
             result={result}
@@ -716,9 +719,12 @@ export default function Home() {
             canSolve={previewOnline && !busy}
           />
         </section>
+      </div>
 
-        {/* RIGHT: case study + recent answers. */}
-        <aside className="space-y-4">
+      {/* Secondary row: case study + recent answers. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* Case study. */}
+        <aside>
           <div className="rounded-2xl border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
@@ -785,11 +791,15 @@ export default function Home() {
             )}
           </div>
 
+        </aside>
+
+        {/* Recent answers. */}
+        <div>
           <RecentAnswers
             refreshKey={historyTick}
             onOpenHistory={() => setShowHistory(true)}
           />
-        </aside>
+        </div>
       </div>
     </main>
   );
