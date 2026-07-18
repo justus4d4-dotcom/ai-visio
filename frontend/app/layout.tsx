@@ -3,6 +3,7 @@ import "./globals.css";
 import AuthGate from "@/components/AuthGate";
 import PwaRegister from "@/components/PwaRegister";
 import InstallPrompt from "@/components/InstallPrompt";
+import { AlertsProvider } from "@/components/Alerts";
 
 export const metadata: Metadata = {
   title: "AI VISIO",
@@ -47,7 +48,9 @@ export default function RootLayout({
       <body>
         <PwaRegister />
         <InstallPrompt />
-        <AuthGate>{children}</AuthGate>
+        <AlertsProvider>
+          <AuthGate>{children}</AuthGate>
+        </AlertsProvider>
       </body>
     </html>
   );

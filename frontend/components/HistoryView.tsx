@@ -5,6 +5,7 @@
 // main page or on the standalone /history route.
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -33,6 +34,7 @@ export default function HistoryView() {
   const [open, setOpen] = useState<string | null>(null);
   // Filter: show everything, or only failed requests (timeouts / errors).
   const [failuresOnly, setFailuresOnly] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,7 +64,15 @@ export default function HistoryView() {
   }
 
   async function clearAll() {
-    if (!confirm("Delete all history? This cannot be undone.")) return;
+    if (
+      !(await confirm({
+        title: "Delete all history",
+        message: "Delete all history? This cannot be undone.",
+        confirmLabel: "Delete all",
+        danger: true,
+      }))
+    )
+      return;
     await fetch(`${API_URL}/api/history`, { method: "DELETE" });
     setItems([]);
   }

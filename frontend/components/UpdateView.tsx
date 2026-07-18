@@ -5,6 +5,7 @@
 // self-update (deploy/update.sh) and streams its progress log.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useConfirm } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -46,6 +47,7 @@ export default function UpdateView() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAllReleases, setShowAllReleases] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const confirm = useConfirm();
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -115,10 +117,13 @@ export default function UpdateView() {
 
   async function applyUpdate(target?: string) {
     if (
-      !confirm(
-        `Update the running application to ${target ?? status?.latest_version ?? "the latest release"}?\n\n` +
+      !(await confirm({
+        title: "Update application",
+        message:
+          `Update the running application to ${target ?? status?.latest_version ?? "the latest release"}?\n\n` +
           "The backend and frontend will restart and be briefly unavailable.",
-      )
+        confirmLabel: "Update",
+      }))
     )
       return;
     setApplying(true);

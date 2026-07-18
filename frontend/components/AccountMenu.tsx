@@ -4,6 +4,7 @@
 // storage-mode indicator, export/import settings, AI usage, admin panel, and sign out.
 
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -27,6 +28,7 @@ export default function AccountMenu({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
   useEffect(() => {
     fetch(`${API_URL}/api/profile`, { credentials: "include" })
@@ -95,7 +97,7 @@ export default function AccountMenu({
       });
       window.location.reload();
     } catch {
-      alert("Could not import that file.");
+      toast("Could not import that file.", "error");
     }
   }
 

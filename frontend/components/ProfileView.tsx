@@ -4,6 +4,7 @@
 // Settings panel; Monitoring/Devices have their own panels.
 
 import { useEffect, useState } from "react";
+import { useConfirm } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -17,6 +18,7 @@ type Profile = {
 export default function ProfileView() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     fetch(`${API_URL}/api/profile`, { credentials: "include" })
@@ -56,7 +58,15 @@ export default function ProfileView() {
   }
 
   async function clearHistory() {
-    if (!confirm("Delete all history/logs? This cannot be undone.")) return;
+    if (
+      !(await confirm({
+        title: "Delete all history",
+        message: "Delete all history/logs? This cannot be undone.",
+        confirmLabel: "Delete all",
+        danger: true,
+      }))
+    )
+      return;
     try {
       await fetch(`${API_URL}/api/history`, { method: "DELETE", credentials: "include" });
       setNote("History cleared.");

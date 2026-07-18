@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_DISPLAY, loadAccount, saveDisplay, type DisplayConfig } from "@/lib/settings";
+import { useConfirm } from "@/components/Alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,6 +58,7 @@ export default function DeviceOtaView() {
   const [saveAll, setSaveAll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const pushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirm = useConfirm();
 
   const loadFirmware = useCallback(async () => {
     try {
@@ -105,7 +107,14 @@ export default function DeviceOtaView() {
       setError("Upload or select a firmware image first.");
       return;
     }
-    if (!confirm(`Deploy firmware to ${name}?`)) return;
+    if (
+      !(await confirm({
+        title: "Deploy firmware",
+        message: `Deploy firmware to ${name}?`,
+        confirmLabel: "Deploy",
+      }))
+    )
+      return;
     setError(null);
     setNotice(null);
     try {
@@ -188,10 +197,13 @@ export default function DeviceOtaView() {
 
   async function pushOta() {
     if (
-      !confirm(
-        `Push the firmware to ${count} connected device${count === 1 ? "" : "s"}?\n\n` +
+      !(await confirm({
+        title: "Update all devices",
+        message:
+          `Push the firmware to ${count} connected device${count === 1 ? "" : "s"}?\n\n` +
           "Each display will download the image, flash itself, and reboot.",
-      )
+        confirmLabel: "Update all",
+      }))
     )
       return;
     setPushing(true);
