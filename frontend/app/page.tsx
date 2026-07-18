@@ -44,10 +44,15 @@ export default function Home() {
     } catch {
       /* ignore */
     }
-    const isMobile =
-      window.matchMedia("(max-width: 767px)").matches &&
-      window.matchMedia("(pointer: coarse)").matches;
-    if (isMobile && !prefersFull) router.replace("/camera");
+    // A phone in any orientation: a coarse pointer plus either a mobile UA or a short
+    // side ≤ 500px (landscape phones are wider than 767px, so a width breakpoint alone
+    // misses them; the min() of the two dimensions is the phone's short edge).
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const isPhone =
+      coarse &&
+      (/Android|iPhone|iPod|Mobile/i.test(navigator.userAgent) ||
+        Math.min(window.innerWidth, window.innerHeight) <= 500);
+    if (isPhone && !prefersFull) router.replace("/camera");
   }, [router]);
 
   const [capturing, setCapturing] = useState(false);

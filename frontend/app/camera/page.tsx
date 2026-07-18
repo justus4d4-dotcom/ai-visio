@@ -184,15 +184,19 @@ export default function CameraCapture() {
       const canvas = overlayRef.current;
       const video = videoRef.current;
       if (canvas && video && video.videoWidth) {
-        const rect = video.getBoundingClientRect();
-        if (canvas.width !== Math.round(rect.width)) canvas.width = rect.width;
-        if (canvas.height !== Math.round(rect.height)) canvas.height = rect.height;
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== Math.round(rect.width)) canvas.width = Math.round(rect.width);
+        if (canvas.height !== Math.round(rect.height)) canvas.height = Math.round(rect.height);
         const ctx = canvas.getContext("2d");
         if (ctx) {
           const W = canvas.width;
           const H = canvas.height;
+          const fit = fitRect(W, H, video.videoWidth, video.videoHeight);
           ctx.clearRect(0, 0, W, H);
-          const pts = cornersRef.current.map((p) => ({ x: p.x * W, y: p.y * H }));
+          const pts = cornersRef.current.map((p) => ({
+            x: fit.dx + p.x * fit.dw,
+            y: fit.dy + p.y * fit.dh,
+          }));
 
           // Mask: darken everything outside the selected screen quad.
           ctx.save();
@@ -235,7 +239,11 @@ export default function CameraCapture() {
 
   function pointerFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const rect = e.currentTarget.getBoundingClientRect();
-    return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+    const video = videoRef.current;
+    const fit = fitRect(rect.width, rect.height, video?.videoWidth ?? 0, video?.videoHeight ?? 0);
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    return { x: (cx - fit.dx) / (fit.dw || 1), y: (cy - fit.dy) / (fit.dh || 1) };
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -326,9 +334,34 @@ export default function CameraCapture() {
   const zoomStops = buildZoomStops(zoomRange.min, zoomRange.max);
 
   return (
-    <main className="fixed inset-0 flex flex-col bg-black text-neutral-100">
-      {/* Top bar */}
-      <header className="safe-top z-10 flex items-center justify-between gap-2 bg-gradient-to-b from-black/80 to-transparent px-3 pb-4 pt-3">
+    <main className="fixed inset-0 overflow-hidden bg-black text-neutral-100">
+      {/* Full-screen viewfinder — fills the screen in portrait AND landscape. */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-contain"
+        muted
+        playsInline
+      />
+      <canvas
+        ref={overlayRef}
+        className="absolute inset-0 h-full w-full touch-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      />
+
+      {!ready && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center">
+          <p className="max-w-xs text-sm text-neutral-400">
+            Point the rear camera at the screen. The monitor is detected and masked
+            automatically — drag the corners if needed.
+          </p>
+        </div>
+      )}
+
+      {/* Top bar (overlay). */}
+      <header className="safe-top absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-6 pt-3">
         <button
           onClick={exitToApp}
           className="flex items-center gap-1.5 rounded-full bg-neutral-900/80 px-3 py-2 text-sm font-medium backdrop-blur active:bg-neutral-800"
@@ -350,59 +383,37 @@ export default function CameraCapture() {
         </span>
       </header>
 
-      {/* Camera viewport */}
-      <div className="relative flex flex-1 items-center overflow-hidden">
-        <div className="relative w-full">
-          <video ref={videoRef} className="block max-h-full w-full object-contain" muted playsInline />
-          <canvas
-            ref={overlayRef}
-            className="absolute inset-0 h-full w-full touch-none"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          />
+      {/* Zoom control (overlay, only when supported). */}
+      {ready && zoomSupported && zoomStops.length > 1 && (
+        <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-neutral-900/80 backdrop-blur">
+          {zoomStops.map((z) => (
+            <button
+              key={z}
+              onClick={() => applyZoom(z)}
+              className={
+                "px-3 py-2.5 text-sm font-semibold " +
+                (Math.abs(zoom - z) < 0.05
+                  ? "bg-indigo-600 text-white"
+                  : "text-neutral-200 active:bg-neutral-800")
+              }
+            >
+              {z % 1 === 0 ? `${z}×` : `${z.toFixed(1)}×`}
+            </button>
+          ))}
         </div>
+      )}
 
-        {!ready && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
-            <p className="text-sm text-neutral-400">
-              Point the rear camera at the screen. The monitor is detected and masked
-              automatically — drag the corners if needed.
-            </p>
-          </div>
-        )}
-
-        {/* Zoom control (only when supported). */}
-        {ready && zoomSupported && zoomStops.length > 1 && (
-          <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-neutral-900/80 backdrop-blur">
-            {zoomStops.map((z) => (
-              <button
-                key={z}
-                onClick={() => applyZoom(z)}
-                className={
-                  "px-3 py-2.5 text-sm font-semibold " +
-                  (Math.abs(zoom - z) < 0.05
-                    ? "bg-indigo-600 text-white"
-                    : "text-neutral-200 active:bg-neutral-800")
-                }
-              >
-                {z % 1 === 0 ? `${z}×` : `${z.toFixed(1)}×`}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Transient hint (auto-detect result, etc.). */}
-        {hint && (
-          <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/80 px-4 py-2 text-center text-xs text-neutral-100 backdrop-blur">
+      {/* Transient hint (auto-detect result, etc.). */}
+      {hint && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
+          <span className="rounded-full bg-black/80 px-4 py-2 text-center text-xs text-neutral-100 backdrop-blur">
             {hint}
-          </div>
-        )}
-      </div>
+          </span>
+        </div>
+      )}
 
       {error && (
-        <div className="mx-3 mb-2 rounded-lg border border-red-900 bg-red-950/80 p-3 text-sm text-red-300">
+        <div className="absolute inset-x-3 bottom-24 z-20 rounded-lg border border-red-900 bg-red-950/90 p-3 text-sm text-red-300 backdrop-blur">
           {error}
           {insecure && (
             <p className="mt-2 text-xs text-red-400">
@@ -413,8 +424,8 @@ export default function CameraCapture() {
         </div>
       )}
 
-      {/* Bottom control sheet */}
-      <div className="safe-bottom z-10 border-t border-neutral-800 bg-neutral-950/95 px-3 pb-3 pt-3 backdrop-blur">
+      {/* Bottom controls (overlay). */}
+      <div className="safe-bottom absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/70 to-transparent px-3 pb-3 pt-8">
         {!ready ? (
           <button
             onClick={startCamera}
@@ -512,4 +523,14 @@ function buildZoomStops(min: number, max: number): number[] {
   if (max >= 2) stops.add(2);
   if (max > 2.05) stops.add(Math.round(max * 10) / 10);
   return [...stops].filter((z) => z >= min && z <= max).sort((a, b) => a - b);
+}
+
+// Rectangle the video actually occupies inside a WxH box under object-contain (letterbox
+// bars included). Used to map corner fractions ↔ screen pixels regardless of orientation.
+function fitRect(cw: number, ch: number, vw: number, vh: number) {
+  if (!vw || !vh) return { dx: 0, dy: 0, dw: cw, dh: ch };
+  const scale = Math.min(cw / vw, ch / vh);
+  const dw = vw * scale;
+  const dh = vh * scale;
+  return { dx: (cw - dw) / 2, dy: (ch - dh) / 2, dw, dh };
 }
