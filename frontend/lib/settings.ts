@@ -73,3 +73,104 @@ export function saveConfig(cfg: ProviderConfig) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
 }
+
+// ── Account-synced settings ────────────────────────────────────────────────
+// All settings live in the signed-in account (server-side) and follow the user across
+// devices; localStorage is only an offline cache. The blob has three sections:
+// provider (main app), camera, and display (ESP32 prefs).
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const ACCOUNT_KEY = "aiexams.account";
+
+export type CameraConfig = { fps: number; preset: number };
+export const DEFAULT_CAMERA: CameraConfig = { fps: 8, preset: 1 };
+
+export type DisplayConfig = {
+  brightness: number; // 0–255 ESP32 backlight
+  text_size: "small" | "medium" | "large";
+  show_confidence: boolean;
+  show_subtext: boolean;
+  show_cached_badge: boolean;
+};
+export const DEFAULT_DISPLAY: DisplayConfig = {
+  brightness: 200,
+  text_size: "medium",
+  show_confidence: true,
+  show_subtext: true,
+  show_cached_badge: true,
+};
+
+export type AccountSettings = {
+  provider: ProviderConfig;
+  camera: CameraConfig;
+  display: DisplayConfig;
+};
+
+function mergeAccount(raw: unknown): AccountSettings {
+  const r = (raw ?? {}) as Partial<AccountSettings>;
+  return {
+    provider: { ...DEFAULT_CONFIG, ...(r.provider ?? {}) },
+    camera: { ...DEFAULT_CAMERA, ...(r.camera ?? {}) },
+    display: { ...DEFAULT_DISPLAY, ...(r.display ?? {}) },
+  };
+}
+
+/** Synchronous best-effort read from the localStorage cache (for first paint). */
+export function cachedAccount(): AccountSettings {
+  if (typeof window === "undefined") return mergeAccount(null);
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_KEY);
+    return mergeAccount(raw ? JSON.parse(raw) : null);
+  } catch {
+    return mergeAccount(null);
+  }
+}
+
+/** Load the account settings from the server, falling back to the cache when offline. */
+export async function loadAccount(): Promise<AccountSettings> {
+  try {
+    const res = await fetch(`${API_URL}/api/settings`, { credentials: "include", cache: "no-store" });
+    if (!res.ok) throw new Error();
+    const merged = mergeAccount(await res.json());
+    try {
+      window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(merged));
+    } catch {
+      /* ignore */
+    }
+    return merged;
+  } catch {
+    return cachedAccount();
+  }
+}
+
+/** Persist the full account settings (cache + server). */
+export async function saveAccount(s: AccountSettings): Promise<void> {
+  try {
+    window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
+  try {
+    await fetch(`${API_URL}/api/settings`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: s }),
+    });
+  } catch {
+    /* offline: cache holds it until next successful save */
+  }
+}
+
+/** Read-modify-write a single section so pages don't clobber each other's settings. */
+async function patchSection<K extends keyof AccountSettings>(
+  key: K,
+  value: AccountSettings[K],
+): Promise<void> {
+  const cur = await loadAccount();
+  await saveAccount({ ...cur, [key]: value });
+}
+
+export const saveProvider = (p: ProviderConfig) => patchSection("provider", p);
+export const saveCamera = (c: CameraConfig) => patchSection("camera", c);
+export const saveDisplay = (d: DisplayConfig) => patchSection("display", d);

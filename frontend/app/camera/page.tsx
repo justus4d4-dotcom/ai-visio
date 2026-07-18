@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { warpQuadToCanvas, type Point } from "@/lib/warp";
 import { detectScreenQuad } from "@/lib/detect";
+import { cachedAccount, loadAccount, saveCamera } from "@/lib/settings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -55,7 +56,7 @@ export default function CameraCapture() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("idle");
-  const [fps, setFps] = useState(2);
+  const [fps, setFps] = useState(8);
   const [preset, setPreset] = useState(1); // Medium
   const [corners, setCorners] = useState<Point[]>(DEFAULT_CORNERS);
   const [insecure, setInsecure] = useState(false);
@@ -74,6 +75,28 @@ export default function CameraCapture() {
   useEffect(() => {
     streamingRef.current = streaming;
   }, [streaming]);
+
+  // Camera settings (stream FPS + output size) sync with the signed-in account.
+  const camLoadedRef = useRef(false);
+  useEffect(() => {
+    const c = cachedAccount().camera;
+    setFps(c.fps);
+    setPreset(c.preset);
+    loadAccount()
+      .then((a) => {
+        setFps(a.camera.fps);
+        setPreset(a.camera.preset);
+      })
+      .catch(() => {})
+      .finally(() => {
+        camLoadedRef.current = true;
+      });
+  }, []);
+  useEffect(() => {
+    if (!camLoadedRef.current) return;
+    const id = window.setTimeout(() => saveCamera({ fps, preset }), 800);
+    return () => window.clearTimeout(id);
+  }, [fps, preset]);
 
   const flashHint = useCallback((msg: string) => {
     setHint(msg);
@@ -104,7 +127,12 @@ export default function CameraCapture() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
         audio: false,
       });
       streamRef.current = stream;
@@ -299,7 +327,9 @@ export default function CameraCapture() {
     if (!streaming) return;
     let cancelled = false;
     const warp = warpRef.current ?? document.createElement("canvas");
-    const period = Math.max(250, 1000 / Math.max(1, fps));
+    // Stream rate: the push loop was previously floored at 250ms (≈4 fps) regardless of
+    // this setting, so raising it did nothing. Honour it up to 30 fps (33ms floor).
+    const period = Math.max(33, 1000 / Math.min(30, Math.max(1, fps)));
 
     const tick = async () => {
       if (cancelled || !streamingRef.current) return;
@@ -494,13 +524,13 @@ export default function CameraCapture() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-neutral-400">Frames / sec</span>
+                  <span className="text-neutral-400">Stream FPS (max 30)</span>
                   <input
                     type="number"
                     min={1}
-                    max={5}
+                    max={30}
                     value={fps}
-                    onChange={(e) => setFps(Number(e.target.value) || 1)}
+                    onChange={(e) => setFps(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
                     className="rounded-lg border border-neutral-700 bg-neutral-950 p-2.5"
                   />
                 </label>

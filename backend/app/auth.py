@@ -137,3 +137,15 @@ def current_email(request: Request) -> str | None:
     if email and email_allowed(email):
         return email
     return None
+
+
+def current_user_key(request: Request) -> str:
+    """Stable key for per-account data: the signed-in email, or "local" when auth is off
+    (local dev) or no valid session is present."""
+    if not settings.auth_configured:
+        return "local"
+    return current_email(request) or "local"
+
+
+def is_admin(email: str | None) -> bool:
+    return bool(email) and email.lower() in settings.admin_emails

@@ -140,3 +140,20 @@ class UsageEvent(Base):
     cached: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
+class UserSetting(Base):
+    """Per-account settings blob so they follow the user across devices/browsers.
+
+    Keyed by the signed-in email (or the singleton "local" key when auth is off). The
+    value is a Fernet-encrypted JSON document holding the main-app (provider), camera and
+    display settings — encrypted because it contains the BYOK Gemini key.
+    """
+
+    __tablename__ = "user_settings"
+
+    user_key: Mapped[str] = mapped_column(String, primary_key=True)  # email or "local"
+    data_encrypted: Mapped[str] = mapped_column(Text)  # Fernet(JSON)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )

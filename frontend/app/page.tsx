@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   DEFAULT_CONFIG,
   DEFAULT_GEMINI_MODELS,
-  loadConfig,
-  saveConfig,
+  cachedAccount,
+  loadAccount,
+  saveProvider,
   type ProviderConfig,
   type SolveResult,
 } from "@/lib/settings";
@@ -16,6 +17,7 @@ import HistoryView from "@/components/HistoryView";
 import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
 import DeviceOtaView from "@/components/DeviceOtaView";
+import ProfileView from "@/components/ProfileView";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -63,6 +65,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const [auto, setAuto] = useState(false);
   const [intervalSec, setIntervalSec] = useState(3);
@@ -101,7 +104,12 @@ export default function Home() {
   const caseScenariosRef = useRef<string[]>([]);
 
   useEffect(() => {
-    setCfg(loadConfig());
+    // Account is the source of truth; show the cached settings instantly, then refresh
+    // from the server so they follow the signed-in user across devices.
+    setCfg(cachedAccount().provider);
+    loadAccount()
+      .then((a) => setCfg(a.provider))
+      .catch(() => {});
     try {
       const raw = window.localStorage.getItem(CASE_STORAGE_KEY);
       const arr = raw ? JSON.parse(raw) : null;
@@ -506,8 +514,20 @@ export default function Home() {
           >
             Settings
           </button>
+          <button
+            onClick={() => setShowProfile(true)}
+            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+          >
+            Profile
+          </button>
         </div>
       </header>
+
+      {showProfile && (
+        <Modal title="Profile" onClose={() => setShowProfile(false)}>
+          <ProfileView />
+        </Modal>
+      )}
 
       {showHistory && (
         <Modal title="History" onClose={() => setShowHistory(false)}>
@@ -531,7 +551,7 @@ export default function Home() {
             cfg={cfg}
             onChange={setCfg}
             onSave={() => {
-              saveConfig(cfg);
+              saveProvider(cfg);
               setShowSettings(false);
             }}
           />
