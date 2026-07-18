@@ -22,10 +22,15 @@ def _to_item(row: models.Answer) -> HistoryItem:
         question_type=row.question_type,
         answer_letters=letters,
         answer_text=row.answer_text,
+        full_answer=row.full_answer,
         confidence=row.confidence,
         provider_label=row.provider_label,
         tokens_used=row.tokens_used,
         has_image=row.image_png is not None,
+        status=row.status or "success",
+        error_type=row.error_type,
+        error_detail=row.error_detail,
+        elapsed_ms=row.elapsed_ms,
         created_at=row.created_at,
     )
 

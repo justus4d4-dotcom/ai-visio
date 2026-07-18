@@ -767,6 +767,11 @@ function AnswerCard({
         <span className="text-xs text-neutral-500">{result.question_type}</span>
       </div>
       <p className="mt-3 text-sm">{result.answer_text}</p>
+      {result.full_answer && result.full_answer !== result.answer_text && (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-300">
+          {result.full_answer}
+        </p>
+      )}
       <div className="mt-4 h-2 w-full overflow-hidden rounded bg-neutral-800">
         <div className="h-full bg-green-500" style={{ width: `${conf}%` }} />
       </div>
@@ -1081,10 +1086,27 @@ function SettingsPanel({
               min={32}
               max={2048}
               step={16}
-              value={cfg.max_output_tokens ?? 200}
+              value={cfg.max_output_tokens ?? 800}
               onChange={(e) => set({ max_output_tokens: Number(e.target.value) })}
               className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
             />
+          </label>
+
+          <label className="text-xs">
+            Request timeout (seconds)
+            <input
+              type="number"
+              min={5}
+              max={120}
+              step={5}
+              value={cfg.timeout_s ?? 30}
+              onChange={(e) => set({ timeout_s: Number(e.target.value) })}
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 p-2 text-sm"
+            />
+            <span className="text-[10px] text-neutral-500">
+              Aborts a hanging Gemini call and logs it as a timeout. Raise if you see
+              frequent timeouts on large images.
+            </span>
           </label>
 
           <label className="flex items-center gap-2 self-end text-xs">

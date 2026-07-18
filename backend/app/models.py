@@ -107,11 +107,18 @@ class Answer(Base):
     question_type: Mapped[str] = mapped_column(String, default="single")
     answer_letters: Mapped[str | None] = mapped_column(String, nullable=True)  # "A" or "A,C"
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full free-form answer shown on the tablet/browser (Feature 1+3).
+    full_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     image_png: Mapped[bytes | None] = mapped_column(nullable=True)
     ocr_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     provider_label: Mapped[str | None] = mapped_column(String, nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Request-log fields (Feature 2): every /api/solve is recorded, success or failure.
+    status: Mapped[str] = mapped_column(String, default="success", index=True)  # success|error|timeout
+    error_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
 
 

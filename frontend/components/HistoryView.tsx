@@ -14,10 +14,15 @@ type HistoryItem = {
   question_type: string;
   answer_letters: string[];
   answer_text: string | null;
+  full_answer: string | null;
   confidence: number | null;
   provider_label: string | null;
   tokens_used: number | null;
   has_image: boolean;
+  status: string;
+  error_type: string | null;
+  error_detail: string | null;
+  elapsed_ms: number | null;
   created_at: string;
 };
 
@@ -26,6 +31,8 @@ export default function HistoryView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // Filter: show everything, or only failed requests (timeouts / errors).
+  const [failuresOnly, setFailuresOnly] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,12 +67,33 @@ export default function HistoryView() {
     setItems([]);
   }
 
+  const isFailure = (it: HistoryItem) => it.status && it.status !== "success";
+  const failureCount = items.filter(isFailure).length;
+  const visible = failuresOnly ? items.filter(isFailure) : items;
+
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-neutral-400">
-          {items.length} saved {items.length === 1 ? "result" : "results"}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-neutral-400">
+            {visible.length} {failuresOnly ? "failed" : "logged"}{" "}
+            {visible.length === 1 ? "request" : "requests"}
+          </p>
+          <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <input
+              type="checkbox"
+              checked={failuresOnly}
+              onChange={(e) => setFailuresOnly(e.target.checked)}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            Failures only
+            {failureCount > 0 && (
+              <span className="rounded bg-red-900/70 px-1.5 py-0.5 text-red-200">
+                {failureCount}
+              </span>
+            )}
+          </label>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
@@ -91,19 +119,25 @@ export default function HistoryView() {
 
       {loading ? (
         <p className="mt-4 text-sm text-neutral-500">Loading…</p>
-      ) : items.length === 0 && !error ? (
+      ) : visible.length === 0 && !error ? (
         <p className="mt-4 text-sm text-neutral-500">
-          No history yet. Interpret a frame and it will appear here.
+          {failuresOnly
+            ? "No failed requests logged. 🎉"
+            : "No history yet. Interpret a frame and it will appear here."}
         </p>
       ) : (
         <ul className="mt-4 space-y-3">
-          {items.map((it) => {
+          {visible.map((it) => {
             const conf =
               it.confidence != null ? Math.round(it.confidence * 100) : null;
+            const failed = isFailure(it);
             return (
               <li
                 key={it.id}
-                className="rounded-xl border border-neutral-800 bg-neutral-900 p-4"
+                className={
+                  "rounded-xl border bg-neutral-900 p-4 " +
+                  (failed ? "border-red-900/70" : "border-neutral-800")
+                }
               >
                 <div className="flex gap-4">
                   {it.has_image && (
@@ -125,16 +159,46 @@ export default function HistoryView() {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-2xl font-bold text-green-400">
-                        {it.answer_letters.join(" ") || "—"}
-                      </span>
+                      {failed ? (
+                        <span
+                          className={
+                            "rounded px-2 py-0.5 text-sm font-semibold " +
+                            (it.status === "timeout"
+                              ? "bg-amber-900/70 text-amber-200"
+                              : "bg-red-900/70 text-red-200")
+                          }
+                        >
+                          {it.status === "timeout" ? "Timeout" : "Error"}
+                        </span>
+                      ) : (
+                        <span className="text-2xl font-bold text-green-400">
+                          {it.answer_letters.join(" ") || "—"}
+                        </span>
+                      )}
                       <span className="shrink-0 text-xs text-neutral-500">
                         {new Date(it.created_at).toLocaleString()}
                       </span>
                     </div>
-                    {it.answer_text && (
-                      <p className="mt-1 text-sm text-neutral-200">{it.answer_text}</p>
+
+                    {failed ? (
+                      <p className="mt-1 text-sm text-red-300">
+                        {it.error_detail || it.error_type || "Request failed."}
+                      </p>
+                    ) : (
+                      <>
+                        {it.answer_text && (
+                          <p className="mt-1 text-sm text-neutral-200">
+                            {it.answer_text}
+                          </p>
+                        )}
+                        {it.full_answer && it.full_answer !== it.answer_text && (
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-400">
+                            {it.full_answer}
+                          </p>
+                        )}
+                      </>
                     )}
+
                     <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
                       {it.question_text}
                     </p>
@@ -142,7 +206,7 @@ export default function HistoryView() {
                       <span className="rounded bg-neutral-800 px-1.5 py-0.5">
                         {it.question_type}
                       </span>
-                      {conf != null && (
+                      {conf != null && !failed && (
                         <span className="rounded bg-neutral-800 px-1.5 py-0.5">
                           {conf}% confidence
                         </span>
@@ -150,6 +214,11 @@ export default function HistoryView() {
                       {it.provider_label && (
                         <span className="rounded bg-neutral-800 px-1.5 py-0.5">
                           {it.provider_label}
+                        </span>
+                      )}
+                      {it.elapsed_ms != null && (
+                        <span className="rounded bg-neutral-800 px-1.5 py-0.5">
+                          {(it.elapsed_ms / 1000).toFixed(1)}s
                         </span>
                       )}
                       {it.tokens_used != null && (

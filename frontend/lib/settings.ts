@@ -10,13 +10,17 @@ export type ProviderConfig = {
   system_prompt?: string;
   extra_context?: string;
   auto_escalate?: boolean;
+  // Per-request timeout (seconds) for the Gemini call.
+  timeout_s?: number;
 };
 
 export type SolveResult = {
   question_text: string;
-  question_type: "single" | "truefalse" | "multi" | "draganddrop" | "unknown";
+  question_type: "single" | "truefalse" | "multi" | "draganddrop" | "general" | "unknown";
   answer_letters: string[];
   answer_text: string;
+  // Full free-form answer for the tablet / browser (empty on legacy results).
+  full_answer?: string;
   confidence: number;
   reasoning?: string | null;
   model: string;
@@ -46,10 +50,11 @@ export const DEFAULT_CONFIG: ProviderConfig = {
   media_resolution: "medium",
   temperature: 0,
   thinking_budget: 0,
-  max_output_tokens: 200,
+  max_output_tokens: 800,
   system_prompt: "",
   extra_context: "",
   auto_escalate: true,
+  timeout_s: 30,
 };
 
 export function loadConfig(): ProviderConfig {

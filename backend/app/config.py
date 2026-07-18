@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     ocr_lang: str = "eng"
     frame_diff_threshold: int = 8
 
+    # ── Request-log retention (Feature 2) ───────────────────────────────────────
+    # Every solve (success or failure, with its image) is logged to the answers table.
+    # To bound storage the log is auto-pruned after each write: rows older than
+    # history_retention_days OR beyond history_max_rows (most recent kept) are deleted.
+    history_retention_days: int = 30
+    history_max_rows: int = 2000
+
     # ── Google sign-in (protects the public deployment) ─────────────────────────
     # Google OAuth 2.0 web client. When BOTH id and secret are set, every /api route
     # (except the auth handshake + health) requires a signed-in, allowed Google account.

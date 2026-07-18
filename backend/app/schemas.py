@@ -7,7 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-QuestionType = Literal["single", "truefalse", "multi", "draganddrop", "unknown"]
+# "general" = the screen is not a multiple-choice question; the model still gives its
+# best free-form answer (see gemini.PROMPT / Feature 3+4). "unknown" is kept for legacy
+# rows and the rare case where nothing at all could be produced.
+QuestionType = Literal["single", "truefalse", "multi", "draganddrop", "general", "unknown"]
 
 
 class GeminiConfig(BaseModel):
@@ -25,14 +28,18 @@ class GeminiConfig(BaseModel):
     temperature: float = Field(0.0, ge=0.0, le=2.0)
     # "Thinking" token budget. 0 = off (fastest); higher can improve hard questions.
     thinking_budget: int = Field(0, ge=0, le=8192)
-    # Cap on the answer size. Small keeps latency/cost down.
-    max_output_tokens: int = Field(200, ge=32, le=2048)
+    # Cap on the answer size. Higher than the old 200 so the full free-form answer
+    # (Feature 3) isn't truncated; the short ESP32 summary stays short regardless.
+    max_output_tokens: int = Field(800, ge=32, le=4096)
     # Override the built-in solver prompt entirely (blank = use the default).
     system_prompt: str = ""
     # Extra instructions/context appended to the prompt (e.g. subject, language).
     extra_context: str = ""
     # Retry an unreadable frame with a stronger model (off = single call = faster).
     auto_escalate: bool = True
+    # Per-request timeout (seconds) for the Gemini call. Requests that exceed it are
+    # aborted and logged as a "timeout" failure instead of hanging (Feature 2).
+    timeout_s: float = Field(30.0, ge=5.0, le=120.0)
 
 
 class ProviderTestResult(BaseModel):
@@ -45,7 +52,11 @@ class SolveResult(BaseModel):
     question_text: str
     question_type: QuestionType
     answer_letters: list[str]
+    # Short one-line summary, sized for the tiny ESP32 display.
     answer_text: str
+    # Full free-form answer for the tablet / browser (Feature 1+3). Empty for legacy
+    # callers; the ESP32 ignores it and shows answer_text/answer_letters instead.
+    full_answer: str = ""
     confidence: float
     reasoning: str | None = None
     model: str
@@ -65,10 +76,16 @@ class HistoryItem(BaseModel):
     question_type: str
     answer_letters: list[str] = []
     answer_text: str | None = None
+    full_answer: str | None = None
     confidence: float | None = None
     provider_label: str | None = None
     tokens_used: int | None = None
     has_image: bool = False
+    # Outcome of the logged request (Feature 2): "success" | "error" | "timeout".
+    status: str = "success"
+    error_type: str | None = None
+    error_detail: str | None = None
+    elapsed_ms: int | None = None
     created_at: dt.datetime
 
 
