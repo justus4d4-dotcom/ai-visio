@@ -24,6 +24,7 @@ from app.routers import providers, remote, solve
 from app.routers import auth as auth_router
 from app.routers import account, devices, history, usage
 from app.routers import updates
+from app.routers import admin
 
 app = FastAPI(title="AI Image Interpreter backend", version="0.1.0")
 
@@ -72,6 +73,7 @@ app.include_router(updates.router)
 app.include_router(devices.router)
 app.include_router(account.router)
 app.include_router(auth_router.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

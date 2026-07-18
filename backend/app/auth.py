@@ -101,9 +101,30 @@ async def exchange_code_for_profile(code: str) -> dict | None:
     }
 
 
+def _db_allowlist() -> dict[str, bool]:
+    """The DB-managed allowlist as ``{email: is_admin}``.
+
+    Tolerant of any error (e.g. the table not existing pre-migration) so auth never
+    hard-fails on a database hiccup — it just falls back to the env-based allowlist.
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models import AllowedEmail
+
+        with SessionLocal() as db:
+            return {r.email.lower(): bool(r.is_admin) for r in db.query(AllowedEmail).all()}
+    except Exception:  # noqa: BLE001 - never let auth crash on a DB read
+        return {}
+
+
 def email_allowed(email: str) -> bool:
-    allow = settings.allowed_email_set
-    return not allow or email.lower() in allow
+    e = email.lower()
+    env = settings.allowed_email_set
+    db = _db_allowlist()
+    # No allowlist configured anywhere → open (any Google account may sign in).
+    if not env and not db:
+        return True
+    return e in env or e in db
 
 
 def create_session(email: str, name: str = "", picture: str = "") -> str:
@@ -184,4 +205,9 @@ def session_profile(request: Request) -> dict | None:
 
 
 def is_admin(email: str | None) -> bool:
-    return bool(email) and email.lower() in settings.admin_emails
+    if not email:
+        return False
+    e = email.lower()
+    if e in settings.admin_emails:
+        return True
+    return _db_allowlist().get(e, False)

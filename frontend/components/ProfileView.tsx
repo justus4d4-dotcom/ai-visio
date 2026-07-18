@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "@/components/Alerts";
+import { getStorageMode, setStorageMode, type StorageMode } from "@/lib/settings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -20,6 +21,11 @@ export default function ProfileView() {
   const [note, setNote] = useState<string | null>(null);
   const confirm = useConfirm();
   const importRef = useRef<HTMLInputElement>(null);
+  const [storage, setStorage] = useState<StorageMode>("cloud");
+
+  useEffect(() => {
+    setStorage(getStorageMode());
+  }, []);
 
   useEffect(() => {
     fetch(`${API_URL}/api/profile`, { credentials: "include" })
@@ -140,6 +146,42 @@ export default function ProfileView() {
         )}
       </section>
 
+      {/* Storage mode */}
+      <section className="rounded-xl border border-line bg-panel p-4">
+        <h3 className="text-sm font-semibold text-ink">Storage</h3>
+        <p className="mt-1 text-xs text-ink-muted">
+          Where your settings live.
+        </p>
+        <div className="mt-3 inline-flex rounded-lg border border-line bg-app p-1 text-sm">
+          {([
+            ["cloud", "Cloud (account-synced)"],
+            ["local", "Local (this browser)"],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => {
+                setStorageMode(mode);
+                setStorage(mode);
+                setNote(
+                  mode === "cloud"
+                    ? "Settings will sync to your account."
+                    : "Settings stay in this browser only.",
+                );
+              }}
+              className={
+                "rounded-md px-3 py-1.5 transition " +
+                (storage === mode
+                  ? "bg-accent font-medium text-accent-ink"
+                  : "text-ink-muted hover:text-ink")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Data controls */}
       <section className="rounded-xl border border-line bg-panel p-4">
         <h3 className="text-sm font-semibold text-ink">Your data</h3>
@@ -175,13 +217,6 @@ export default function ProfileView() {
           Export bundles your settings, history, and a hashed copy of your LLM key (never the raw key).
         </p>
       </section>
-
-      {profile?.is_admin && (
-        <p className="text-xs text-ink-muted">
-          Admin: allowed-account management is available via the backend allowlist
-          (ALLOWED_EMAILS / bootstrap admins) for now.
-        </p>
-      )}
     </div>
   );
 }

@@ -54,6 +54,7 @@ class AllowedEmail(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     added_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

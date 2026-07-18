@@ -34,6 +34,12 @@
 #define OTA_PASSWORD "change-this-ota-pass"
 #endif
 
+// Firmware version reported to the backend on connect (shown per-device in Settings).
+// Bump this on each firmware-affecting release. Override via build_flags if desired.
+#ifndef FW_VERSION
+#define FW_VERSION "v0.20.0"
+#endif
+
 // Optional built-in WiFi credentials (auto-connect without the setup portal) and a
 // default backend URL. Provide them in wifi_secrets.h (see wifi_secrets.example.h).
 #if __has_include("wifi_secrets.h")
@@ -664,6 +670,8 @@ static void onWsEvent(WStype_t type, uint8_t* payload, size_t len) {
     case WStype_CONNECTED:
       g_wsConnected = true;
       if (g_state == UiState::Connecting) g_state = UiState::Idle;
+      // Announce our firmware version so the backend can show it per-device.
+      g_ws.sendTXT("{\"type\":\"hello\",\"version\":\"" FW_VERSION "\"}");
       break;
     case WStype_DISCONNECTED:
       g_wsConnected = false;

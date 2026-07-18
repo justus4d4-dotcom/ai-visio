@@ -25,6 +25,7 @@ type Device = {
   id: string;
   name?: string | null;
   remote?: string | null;
+  version?: string | null;
   connected_at?: string;
   ota_status?: string;
   ota_progress?: number;
@@ -349,6 +350,9 @@ export default function DeviceOtaView() {
                   <p className="truncate font-medium text-ink">{d.name ?? "Display"}</p>
                   <p className="truncate font-mono text-[11px] text-ink-muted">
                     {d.remote ?? d.id.slice(0, 8)}
+                    {d.version && (
+                      <span className="ml-2 text-ink-muted/70">{d.version}</span>
+                    )}
                   </p>
                 </div>
                 <span

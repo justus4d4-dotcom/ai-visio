@@ -139,6 +139,29 @@ function mergeAccount(raw: unknown): AccountSettings {
   };
 }
 
+// ── Storage mode ────────────────────────────────────────────────────────────
+// "cloud" = settings sync to the signed-in account (server). "local" = settings
+// stay in this browser only (no server writes/reads). Cached in localStorage.
+export type StorageMode = "cloud" | "local";
+const STORAGE_MODE_KEY = "ai_visio_storage_mode";
+
+export function getStorageMode(): StorageMode {
+  if (typeof window === "undefined") return "cloud";
+  try {
+    return window.localStorage.getItem(STORAGE_MODE_KEY) === "local" ? "local" : "cloud";
+  } catch {
+    return "cloud";
+  }
+}
+
+export function setStorageMode(mode: StorageMode) {
+  try {
+    window.localStorage.setItem(STORAGE_MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Synchronous best-effort read from the localStorage cache (for first paint). */
 export function cachedAccount(): AccountSettings {
   if (typeof window === "undefined") return mergeAccount(null);
@@ -152,6 +175,8 @@ export function cachedAccount(): AccountSettings {
 
 /** Load the account settings from the server, falling back to the cache when offline. */
 export async function loadAccount(): Promise<AccountSettings> {
+  // Local mode: never touch the server — the browser cache is the source of truth.
+  if (getStorageMode() === "local") return cachedAccount();
   try {
     const res = await fetch(`${API_URL}/api/settings`, { credentials: "include", cache: "no-store" });
     if (!res.ok) throw new Error();
@@ -174,6 +199,8 @@ export async function saveAccount(s: AccountSettings): Promise<void> {
   } catch {
     /* ignore */
   }
+  // Local mode: keep everything in the browser only.
+  if (getStorageMode() === "local") return;
   try {
     await fetch(`${API_URL}/api/settings`, {
       method: "PUT",

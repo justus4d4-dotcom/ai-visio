@@ -202,6 +202,12 @@ class DeviceHub:
             if progress is not None:
                 meta["ota_progress"] = progress
 
+    def set_version(self, cid: str, version: str) -> None:
+        """Record the firmware version a device reported on connect."""
+        meta = self._meta.get(cid)
+        if meta is not None:
+            meta["version"] = version
+
     def reset_ota(self, status: str) -> None:
         """Mark every connected device with an OTA status (called when an OTA starts)."""
         now = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -478,6 +484,11 @@ async def device_ws(ws: WebSocket) -> None:
                 _state["trigger_id"] = str(uuid.uuid4())
                 _state["action"] = "solve"
                 _state["status"] = "requested"
+            elif msg.get("type") == "hello":
+                # The device announced its firmware version on connect.
+                v = msg.get("version")
+                if isinstance(v, str) and v:
+                    hub.set_version(cid, v)
             elif msg.get("type") == "capture_scenario":
                 # Case-study mode: the device asked to capture the current screen as a
                 # scenario. The browser transcribes + caches it (it holds the API key).

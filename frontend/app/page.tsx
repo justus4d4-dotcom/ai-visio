@@ -22,6 +22,7 @@ import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
 import DeviceOtaView from "@/components/DeviceOtaView";
 import ProfileView from "@/components/ProfileView";
+import AdminView from "@/components/AdminView";
 import TopNav from "@/components/TopNav";
 import type { AccountAction } from "@/components/AccountMenu";
 
@@ -72,6 +73,7 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   const [auto, setAuto] = useState(false);
   const [intervalSec, setIntervalSec] = useState(3);
@@ -523,7 +525,8 @@ export default function Home() {
         onAccountAction={(a: AccountAction) => {
           if (a === "usage") setShowUsage(true);
           else if (a === "history") setShowHistory(true);
-          else if (a === "admin") setShowProfile(true);
+          else if (a === "profile") setShowProfile(true);
+          else if (a === "admin") setShowAdmin(true);
         }}
       />
 
@@ -532,6 +535,12 @@ export default function Home() {
       {showProfile && (
         <Drawer title="Profile" onClose={() => setShowProfile(false)}>
           <ProfileView />
+        </Drawer>
+      )}
+
+      {showAdmin && (
+        <Drawer title="Admin" onClose={() => setShowAdmin(false)}>
+          <AdminView />
         </Drawer>
       )}
 
