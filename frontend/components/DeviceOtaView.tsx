@@ -6,6 +6,7 @@
 // binary over HTTP and flashes itself (see firmware/src/main.cpp + app/routers/devices.py).
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DEFAULT_DISPLAY, loadAccount, saveDisplay, type DisplayConfig } from "@/lib/settings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -21,6 +22,7 @@ type Firmware = {
 
 type Device = {
   id: string;
+  name?: string | null;
   remote?: string | null;
   connected_at?: string;
   ota_status?: string;
@@ -50,7 +52,11 @@ export default function DeviceOtaView() {
   const [pushing, setPushing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [display, setDisplay] = useState<DisplayConfig>(DEFAULT_DISPLAY);
+  const [openGear, setOpenGear] = useState<string | null>(null);
+  const [saveAll, setSaveAll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadFirmware = useCallback(async () => {
     try {
@@ -87,9 +93,58 @@ export default function DeviceOtaView() {
     loadFirmware();
     loadLatest();
     loadDevices();
+    loadAccount()
+      .then((a) => setDisplay(a.display))
+      .catch(() => {});
     const id = setInterval(loadDevices, 3000);
     return () => clearInterval(id);
   }, [loadFirmware, loadLatest, loadDevices]);
+
+  async function deployOne(id: string, name: string) {
+    if (!firmware?.stored) {
+      setError("Upload or select a firmware image first.");
+      return;
+    }
+    if (!confirm(`Deploy firmware to ${name}?`)) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`${API_URL}/api/devices/${id}/ota`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail ?? `Failed (${res.status})`);
+      setNotice(`Update sent to ${name}.`);
+      loadDevices();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Deploy failed.");
+    }
+  }
+
+  // Auto-save the display config to the account and push it to the target device
+  // (or all devices when "Save to all" is checked), debounced so sliders don't spam.
+  function changeDisplay(patch: Partial<DisplayConfig>, deviceId: string) {
+    const next = { ...display, ...patch };
+    setDisplay(next);
+    if (pushRef.current) clearTimeout(pushRef.current);
+    pushRef.current = setTimeout(async () => {
+      try {
+        await saveDisplay(next);
+        const url = saveAll
+          ? `${API_URL}/api/devices/display`
+          : `${API_URL}/api/devices/${deviceId}/display`;
+        await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        });
+      } catch {
+        /* ignore transient push errors */
+      }
+    }, 500);
+  }
 
   async function useLatest() {
     setFetching(true);
@@ -277,24 +332,140 @@ export default function DeviceOtaView() {
           {devices.map((d) => (
             <li
               key={d.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-neutral-800 bg-neutral-950 text-sm"
             >
-              <span className="font-mono text-xs text-neutral-400">{d.remote ?? d.id.slice(0, 8)}</span>
-              <span
-                className={
-                  "rounded px-1.5 py-0.5 text-xs " +
-                  (d.ota_status === "updating"
-                    ? "bg-amber-900/70 text-amber-200"
-                    : d.ota_status === "failed" || d.ota_status === "no_response"
-                      ? "bg-red-900/70 text-red-200"
-                      : d.ota_status === "requested"
-                        ? "bg-indigo-900/70 text-indigo-200"
-                        : "bg-neutral-800 text-neutral-400")
-                }
-              >
-                {d.ota_status === "no_response" ? "no response" : d.ota_status ?? "connected"}
-                {d.ota_progress != null ? ` ${d.ota_progress}%` : ""}
-              </span>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-neutral-200">{d.name ?? "Display"}</p>
+                  <p className="truncate font-mono text-[11px] text-neutral-500">
+                    {d.remote ?? d.id.slice(0, 8)}
+                  </p>
+                </div>
+                <span
+                  className={
+                    "shrink-0 rounded px-1.5 py-0.5 text-xs " +
+                    (d.ota_status === "updating"
+                      ? "bg-amber-900/70 text-amber-200"
+                      : d.ota_status === "failed" || d.ota_status === "no_response"
+                        ? "bg-red-900/70 text-red-200"
+                        : d.ota_status === "requested"
+                          ? "bg-indigo-900/70 text-indigo-200"
+                          : "bg-neutral-800 text-neutral-400")
+                  }
+                >
+                  {d.ota_status === "no_response" ? "no response" : d.ota_status ?? "connected"}
+                  {d.ota_progress != null ? ` ${d.ota_progress}%` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => deployOne(d.id, d.name ?? "this device")}
+                  disabled={!firmware?.stored}
+                  title="Deploy firmware to this device"
+                  className="shrink-0 rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Deploy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpenGear(openGear === d.id ? null : d.id)}
+                  title="Display settings"
+                  aria-expanded={openGear === d.id}
+                  className={
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-neutral-300 hover:bg-neutral-800 " +
+                    (openGear === d.id ? "border-indigo-600 bg-neutral-800" : "border-neutral-700")
+                  }
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+              </div>
+
+              {openGear === d.id && (
+                <div className="space-y-3 border-t border-neutral-800 px-3 py-3">
+                  <div>
+                    <label className="flex items-center justify-between text-xs text-neutral-300">
+                      <span>Brightness</span>
+                      <span className="font-mono text-neutral-500">{display.brightness}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={20}
+                      max={255}
+                      value={display.brightness}
+                      onChange={(e) => changeDisplay({ brightness: Number(e.target.value) }, d.id)}
+                      className="mt-1 w-full accent-indigo-500"
+                    />
+                  </div>
+
+                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Text size</span>
+                    <select
+                      value={display.text_size}
+                      onChange={(e) =>
+                        changeDisplay({ text_size: e.target.value as DisplayConfig["text_size"] }, d.id)
+                      }
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200"
+                    >
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Show confidence</span>
+                    <input
+                      type="checkbox"
+                      checked={display.show_confidence}
+                      onChange={(e) => changeDisplay({ show_confidence: e.target.checked }, d.id)}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Show subtext</span>
+                    <input
+                      type="checkbox"
+                      checked={display.show_subtext}
+                      onChange={(e) => changeDisplay({ show_subtext: e.target.checked }, d.id)}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Show cached badge</span>
+                    <input
+                      type="checkbox"
+                      checked={display.show_cached_badge}
+                      onChange={(e) => changeDisplay({ show_cached_badge: e.target.checked }, d.id)}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center gap-2 border-t border-neutral-800 pt-3 text-xs text-neutral-400">
+                    <input
+                      type="checkbox"
+                      checked={saveAll}
+                      onChange={(e) => setSaveAll(e.target.checked)}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                    <span>Save to all devices</span>
+                  </label>
+                  <p className="text-[11px] text-neutral-600">
+                    Changes save automatically and push{saveAll ? " to all connected displays" : " to this display"}.
+                  </p>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -242,25 +242,33 @@ def firmware_binary() -> Response:
     )
 
 
-@router.post("/ota", response_model=OtaResult)
-async def start_ota() -> OtaResult:
-    """Tell every connected ESP32 to pull the stored firmware and flash itself."""
+def _ota_message_and_meta() -> tuple[dict, FirmwareInfo]:
     meta = _load_meta()
     if not meta.stored:
         raise HTTPException(status_code=400, detail="Upload a firmware image first.")
+    msg = {"type": "ota", "path": FIRMWARE_PATH, "md5": meta.md5, "version": meta.version}
+    return msg, meta
+
+
+@router.post("/ota", response_model=OtaResult)
+async def start_ota() -> OtaResult:
+    """Tell every connected ESP32 to pull the stored firmware and flash itself."""
+    msg, meta = _ota_message_and_meta()
     if hub.count == 0:
         raise HTTPException(status_code=409, detail="No devices are connected.")
-
     hub.reset_ota("requested")
-    await hub.broadcast(
-        {
-            "type": "ota",
-            "path": FIRMWARE_PATH,
-            "md5": meta.md5,
-            "version": meta.version,
-        }
-    )
+    await hub.broadcast(msg)
     return OtaResult(targeted=hub.count, firmware=meta)
+
+
+@router.post("/{device_id}/ota", response_model=OtaResult)
+async def ota_one(device_id: str) -> OtaResult:
+    """Deploy the stored firmware to a single connected device."""
+    msg, meta = _ota_message_and_meta()
+    if not await hub.send_to(device_id, msg):
+        raise HTTPException(status_code=404, detail="That device is not connected.")
+    hub.set_ota_status(device_id, "requested")
+    return OtaResult(targeted=1, firmware=meta)
 
 
 class DisplayConfig(BaseModel):
@@ -279,6 +287,15 @@ async def push_display(cfg: DisplayConfig) -> dict[str, object]:
     return {"ok": True, "targeted": hub.count, "display": full}
 
 
+@router.post("/{device_id}/display")
+async def push_display_one(device_id: str, cfg: DisplayConfig) -> dict[str, object]:
+    """Push display preferences to a single connected device."""
+    full = set_display(cfg.model_dump(exclude_none=True))
+    if not await hub.send_to(device_id, {"type": "display_config", **full}):
+        raise HTTPException(status_code=404, detail="That device is not connected.")
+    return {"ok": True, "targeted": 1, "display": full}
+
+
 @router.get("/connected")
 def connected_devices() -> dict[str, object]:
     """Connected device count + metadata (incl. reported OTA status) for the UI.
@@ -289,8 +306,9 @@ def connected_devices() -> dict[str, object]:
     """
     now = dt.datetime.now(dt.timezone.utc)
     devices: list[dict[str, object]] = []
-    for src in hub.devices():
+    for i, src in enumerate(hub.devices()):
         d = dict(src)
+        d["name"] = f"Display {i + 1}"
         if d.get("ota_status") == "requested" and d.get("ota_at"):
             try:
                 age = (now - dt.datetime.fromisoformat(str(d["ota_at"]))).total_seconds()

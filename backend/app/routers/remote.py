@@ -181,6 +181,18 @@ class DeviceHub:
             except Exception:  # noqa: BLE001 - drop dead sockets
                 self.disconnect(cid)
 
+    async def send_to(self, cid: str, message: dict[str, object]) -> bool:
+        """Send a message to one connected device by id. Returns False if not connected."""
+        ws = self._conns.get(cid)
+        if ws is None:
+            return False
+        try:
+            await ws.send_json(message)
+            return True
+        except Exception:  # noqa: BLE001 - drop a dead socket
+            self.disconnect(cid)
+            return False
+
     def set_ota_status(self, cid: str, status: str, progress: int | None = None) -> None:
         """Record the OTA state a device reported (shown in the settings OTA panel)."""
         meta = self._meta.get(cid)
