@@ -28,8 +28,15 @@ def me(request: Request) -> JSONResponse:
     if not settings.auth_configured:
         return JSONResponse({"auth_required": False, "authenticated": True, "email": None})
     email = auth.current_email(request)
+    profile = auth.session_profile(request) or {}
     return JSONResponse(
-        {"auth_required": True, "authenticated": bool(email), "email": email}
+        {
+            "auth_required": True,
+            "authenticated": bool(email),
+            "email": email,
+            "name": profile.get("name") or None,
+            "picture": profile.get("picture") or None,
+        }
     )
 
 
@@ -53,16 +60,17 @@ async def callback(request: Request, code: str | None = None, state: str | None 
     if not code or not state or not expected_state or state != expected_state:
         return _deny("Sign-in failed (invalid state). Please try again.")
 
-    email = await auth.exchange_code_for_email(code)
-    if not email:
+    profile = await auth.exchange_code_for_profile(code)
+    if not profile:
         return _deny("Sign-in failed (could not verify your Google account).")
+    email = profile["email"]
     if not auth.email_allowed(email):
         return _deny(f"{email} is not authorized to access this app.")
 
     resp = RedirectResponse(url=_safe_next(next_target), status_code=303)
     resp.set_cookie(
         auth.SESSION_COOKIE,
-        auth.create_session(email),
+        auth.create_session(email, profile.get("name", ""), profile.get("picture", "")),
         max_age=settings.session_ttl_seconds,
         **_COOKIE_KW,
     )

@@ -27,6 +27,8 @@ class Profile(BaseModel):
     auth_required: bool
     authenticated: bool
     email: str | None = None
+    name: str | None = None
+    picture: str | None = None
     is_admin: bool = False
 
 
@@ -34,11 +36,14 @@ class Profile(BaseModel):
 def get_profile(request: Request) -> Profile:
     if not app_settings.auth_configured:
         return Profile(auth_required=False, authenticated=True, email=None, is_admin=True)
-    email = auth.current_email(request)
+    prof = auth.session_profile(request) or {}
+    email = prof.get("email")
     return Profile(
         auth_required=True,
         authenticated=bool(email),
         email=email,
+        name=prof.get("name") or None,
+        picture=prof.get("picture") or None,
         is_admin=auth.is_admin(email),
     )
 

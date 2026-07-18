@@ -21,7 +21,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Apply the saved theme before paint to avoid a flash of the wrong theme. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('ai_visio_theme');var d=t?t==='dark':true;var c=document.documentElement.classList;c.toggle('dark',d);c.toggle('light',!d);}catch(e){}})();",
+          }}
+        />
+      </head>
       <body>
         <AuthGate>{children}</AuthGate>
       </body>

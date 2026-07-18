@@ -18,6 +18,8 @@ import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
 import DeviceOtaView from "@/components/DeviceOtaView";
 import ProfileView from "@/components/ProfileView";
+import TopNav from "@/components/TopNav";
+import type { AccountAction } from "@/components/AccountMenu";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -494,34 +496,14 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-4 sm:p-6 max-w-6xl mx-auto">
-      <header className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-          >
-            History
-          </button>
-          <button
-            onClick={() => setShowUsage(true)}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-          >
-            Monitoring
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-          >
-            Settings
-          </button>
-          <button
-            onClick={() => setShowProfile(true)}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-          >
-            Profile
-          </button>
-        </div>
-      </header>
+      <TopNav
+        onSettings={() => setShowSettings(true)}
+        onAccountAction={(a: AccountAction) => {
+          if (a === "usage") setShowUsage(true);
+          else if (a === "history") setShowHistory(true);
+          else if (a === "admin") setShowProfile(true);
+        }}
+      />
 
       {showProfile && (
         <Modal title="Profile" onClose={() => setShowProfile(false)}>

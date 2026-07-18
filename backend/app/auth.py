@@ -59,10 +59,14 @@ def google_login_url(state: str) -> str:
 
 
 async def exchange_code_for_email(code: str) -> str | None:
-    """Swap an authorization code for tokens and return the verified email (or None).
+    """Back-compat wrapper: return just the verified email."""
+    profile = await exchange_code_for_profile(code)
+    return profile["email"] if profile else None
 
-    The token exchange happens server-to-server over TLS directly with Google, and the
-    email is then read from Google's userinfo endpoint using the returned access token.
+
+async def exchange_code_for_profile(code: str) -> dict | None:
+    """Swap an authorization code for tokens and return the verified Google profile
+    ({email, name, picture}) or None. Token exchange is server-to-server over TLS.
     """
     data = {
         "code": code,
@@ -88,7 +92,13 @@ async def exchange_code_for_email(code: str) -> str | None:
     if not payload.get("email_verified", False):
         return None
     email = payload.get("email")
-    return email.lower() if isinstance(email, str) else None
+    if not isinstance(email, str):
+        return None
+    return {
+        "email": email.lower(),
+        "name": payload.get("name") or "",
+        "picture": payload.get("picture") or "",
+    }
 
 
 def email_allowed(email: str) -> bool:
@@ -96,20 +106,28 @@ def email_allowed(email: str) -> bool:
     return not allow or email.lower() in allow
 
 
-def create_session(email: str) -> str:
+def create_session(email: str, name: str = "", picture: str = "") -> str:
     now = dt.datetime.now(dt.timezone.utc)
     claims = {
         "sub": email,
+        "name": name,
+        "picture": picture,
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(seconds=settings.session_ttl_seconds)).timestamp()),
     }
     return jwt.encode(claims, settings.auth_secret, algorithm=_ALGORITHM)
 
 
-def email_from_session(token: str) -> str | None:
+def _claims(token: str) -> dict | None:
     try:
-        claims = jwt.decode(token, settings.auth_secret, algorithms=[_ALGORITHM])
+        return jwt.decode(token, settings.auth_secret, algorithms=[_ALGORITHM])
     except JWTError:
+        return None
+
+
+def email_from_session(token: str) -> str | None:
+    claims = _claims(token)
+    if not claims:
         return None
     sub = claims.get("sub")
     return sub if isinstance(sub, str) else None
@@ -145,6 +163,24 @@ def current_user_key(request: Request) -> str:
     if not settings.auth_configured:
         return "local"
     return current_email(request) or "local"
+
+
+def session_profile(request: Request) -> dict | None:
+    """{email, name, picture} for the signed-in user, or None."""
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if not cookie:
+        return None
+    claims = _claims(cookie)
+    if not claims:
+        return None
+    email = claims.get("sub")
+    if not isinstance(email, str) or not email_allowed(email):
+        return None
+    return {
+        "email": email,
+        "name": claims.get("name") or "",
+        "picture": claims.get("picture") or "",
+    }
 
 
 def is_admin(email: str | None) -> bool:
