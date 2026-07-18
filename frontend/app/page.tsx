@@ -13,6 +13,8 @@ import {
 } from "@/lib/settings";
 import { aHashFromBlob, aHashFromVideo, hamming } from "@/lib/vision";
 import Modal from "@/components/Modal";
+import Drawer from "@/components/Drawer";
+import UpdateBanner from "@/components/UpdateBanner";
 import HistoryView from "@/components/HistoryView";
 import UsageView from "@/components/UsageView";
 import UpdateView from "@/components/UpdateView";
@@ -517,6 +519,8 @@ export default function Home() {
         }}
       />
 
+      <UpdateBanner onOpen={() => setShowSettings(true)} />
+
       {showProfile && (
         <Modal title="Profile" onClose={() => setShowProfile(false)}>
           <ProfileView />
@@ -536,7 +540,7 @@ export default function Home() {
       )}
 
       {showSettings && (
-        <Modal
+        <Drawer
           title="Settings"
           subtitle="Google Gemini (BYOK)"
           onClose={() => setShowSettings(false)}
@@ -561,7 +565,7 @@ export default function Home() {
               <DeviceOtaView />
             </div>
           </div>
-        </Modal>
+        </Drawer>
       )}
 
       <div className="mt-6 flex justify-center">
