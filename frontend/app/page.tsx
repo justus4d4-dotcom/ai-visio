@@ -494,6 +494,18 @@ export default function Home() {
 
   const previewOnline =
     captureSource === "browser" ? capturing : captureSource === "agent" ? agentOnline : cameraOnline;
+  const sourceLabel =
+    captureSource === "camera"
+      ? cameraOnline
+        ? "iPhone online"
+        : "iPhone offline"
+      : captureSource === "agent"
+        ? agentOnline
+          ? "Agent online"
+          : "Agent offline"
+        : capturing
+          ? "Capturing"
+          : "Browser idle";
 
   return (
     <main className="min-h-screen p-4 sm:p-6 max-w-6xl mx-auto">
@@ -559,7 +571,96 @@ export default function Home() {
         </Modal>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+      <div className="mt-6 flex justify-center">
+        <div className="inline-flex gap-1 rounded-full border border-line bg-panel p-1 text-sm">
+          {(
+            [
+              ["agent", "Native app", agentOnline],
+              ["browser", "Browser", true],
+              ["camera", "iPhone", cameraOnline],
+            ] as const
+          ).map(([src, label, online]) => (
+            <button
+              key={src}
+              onClick={() => selectSource(src)}
+              className={
+                "flex items-center gap-2 rounded-full px-4 py-1.5 transition " +
+                (captureSource === src
+                  ? "bg-accent font-medium text-accent-ink"
+                  : "text-ink-muted hover:text-ink")
+              }
+            >
+              {label}
+              {src !== "browser" && (
+                <span
+                  className={
+                    "inline-block h-1.5 w-1.5 rounded-full " +
+                    (online ? "bg-sage" : "bg-taupe-grey")
+                  }
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-panel p-3">
+        {captureSource === "browser" ? (
+          capturing ? (
+            <button
+              onClick={stopCapture}
+              className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:bg-panel-2"
+            >
+              Stop capture
+            </button>
+          ) : (
+            <button
+              onClick={startCapture}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90"
+            >
+              Start capture
+            </button>
+          )
+        ) : (
+          <button
+            onClick={solveNow}
+            disabled={!previewOnline || busy}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-40"
+          >
+            Interpret now
+          </button>
+        )}
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(e) => setAuto(e.target.checked)}
+            disabled={!previewOnline}
+            className="h-4 w-4 accent-accent"
+          />
+          Auto-detect
+        </label>
+        <label className="flex items-center gap-1 text-xs text-ink-muted">
+          every
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={intervalSec}
+            onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
+            className="w-14 rounded border border-line bg-app p-1 text-center text-sm text-ink"
+          />
+          s
+        </label>
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+          <StatusChip label={sourceLabel} ok={previewOnline} />
+          <StatusChip label={`${deviceCount} device${deviceCount === 1 ? "" : "s"}`} ok={deviceCount > 0} />
+          {autoStatus !== "idle" && <span className="text-accent">{autoStatus}</span>}
+          {remoteStatus !== "idle" && <span className="text-ink-muted">esp: {remoteStatus}</span>}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         {/* LEFT: live preview + interpreted answer. */}
         <section className="space-y-4">
           <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-black">
@@ -599,6 +700,12 @@ export default function Home() {
             )}
           </div>
 
+          {agentCount > 1 && (
+            <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-2 text-xs text-amber-300">
+              {agentCount} agents running — stop all but one to avoid a flickering preview.
+            </p>
+          )}
+
           {error && (
             <p className="rounded-lg border border-red-900 bg-red-950/60 p-3 text-sm text-red-300">
               {error}
@@ -613,188 +720,9 @@ export default function Home() {
           />
         </section>
 
-        {/* RIGHT: controls + device overview + recent answers. */}
+        {/* RIGHT: case study + recent answers. */}
         <aside className="space-y-4">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-neutral-300">Capture source</h2>
-              <span className="flex items-center gap-2 text-xs text-neutral-400">
-                <span
-                  className={
-                    "inline-block h-2 w-2 rounded-full " +
-                    ((captureSource === "camera" ? cameraOnline : agentOnline)
-                      ? "bg-green-500"
-                      : "bg-neutral-600")
-                  }
-                />
-                {captureSource === "camera"
-                  ? cameraOnline
-                    ? "iPhone online"
-                    : "iPhone offline"
-                  : agentOnline
-                    ? "agent online"
-                    : "agent offline"}
-              </span>
-            </div>
-            <div className="mt-3 flex overflow-hidden rounded-lg border border-neutral-700">
-              <button
-                onClick={() => selectSource("browser")}
-                className={
-                  "flex-1 px-3 py-1.5 text-xs " +
-                  (captureSource === "browser"
-                    ? "bg-indigo-600 text-white"
-                    : "hover:bg-neutral-800")
-                }
-              >
-                Browser
-              </button>
-              <button
-                onClick={() => selectSource("agent")}
-                disabled={!agentOnline}
-                title={
-                  agentOnline
-                    ? "Use the native macOS screen agent"
-                    : "Start the native agent (see agent/README.md)"
-                }
-                className={
-                  "flex-1 px-3 py-1.5 text-xs disabled:opacity-40 " +
-                  (captureSource === "agent"
-                    ? "bg-indigo-600 text-white"
-                    : "hover:bg-neutral-800")
-                }
-              >
-                Native app
-              </button>
-              <button
-                onClick={() => selectSource("camera")}
-                title="Use an iPhone pointed at the screen (open /camera on the phone)"
-                className={
-                  "flex-1 px-3 py-1.5 text-xs " +
-                  (captureSource === "camera"
-                    ? "bg-indigo-600 text-white"
-                    : "hover:bg-neutral-800")
-                }
-              >
-                iPhone
-              </button>
-            </div>
-            {captureSource === "camera" && (
-              <p className="mt-3 rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs text-neutral-400">
-                On the iPhone, open{" "}
-                <a href="/camera" className="text-indigo-400 underline">
-                  this site&apos;s <code>/camera</code> page
-                </a>
-                , aim the rear camera at the screen, drag the four dots onto its corners,
-                and tap <span className="text-neutral-200">Start streaming</span>. Requires
-                HTTPS on iOS.
-              </p>
-            )}
-            {agentCount > 1 && (
-              <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/60 p-2 text-xs text-amber-300">
-                {agentCount} agents are running — stop all but one, or the preview will
-                flicker between their screens. A launchd auto-start and a manual/Raycast
-                start can both be live at once (see agent/README.md).
-              </p>
-            )}
-            {captureSource === "browser" &&
-              (!capturing ? (
-                <button
-                  onClick={startCapture}
-                  className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-500"
-                >
-                  Start capture
-                </button>
-              ) : (
-                <button
-                  onClick={stopCapture}
-                  className="mt-3 w-full rounded-lg border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800"
-                >
-                  Stop
-                </button>
-              ))}
-          </div>
-
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <h2 className="text-sm font-medium text-neutral-300">Auto-detect</h2>
-                <InfoHint text="Interprets automatically when the screen content changes and settles. Works with the active capture or the native agent." />
-              </div>
-              <span className="flex items-center gap-2 text-xs text-neutral-400">
-                <span
-                  className={
-                    "inline-block h-2 w-2 rounded-full " +
-                    (autoStatus === "watching"
-                      ? "bg-green-500"
-                      : autoStatus.includes("interpreting")
-                        ? "bg-amber-400 animate-pulse"
-                        : "bg-neutral-600")
-                  }
-                />
-                {autoStatus}
-              </span>
-            </div>
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={auto}
-                onChange={(e) => setAuto(e.target.checked)}
-                disabled={!previewOnline}
-                className="h-4 w-4 accent-indigo-500"
-              />
-              Auto-detect changes
-            </label>
-            <label className="mt-2 flex items-center gap-1 text-xs text-neutral-400">
-              every
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={intervalSec}
-                onChange={(e) => setIntervalSec(Number(e.target.value) || 1)}
-                className="w-14 rounded border border-neutral-700 bg-neutral-950 p-1 text-center text-sm"
-              />
-              seconds
-            </label>
-          </div>
-
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <h2 className="text-sm font-medium text-neutral-300">ESP32 display</h2>
-                <InfoHint text="The device's whole screen is a button: a touch interprets the current frame and shows the answer." />
-              </div>
-              <span className="flex items-center gap-2 text-xs text-neutral-400">
-                <span
-                  className={
-                    "inline-block h-2 w-2 rounded-full " +
-                    (remoteStatus === "done"
-                      ? "bg-green-500"
-                      : remoteStatus === "solving"
-                        ? "bg-amber-400 animate-pulse"
-                        : remoteStatus === "error"
-                          ? "bg-red-500"
-                          : "bg-neutral-600")
-                  }
-                />
-                {remoteStatus}
-              </span>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span
-                className={
-                  "rounded px-1.5 py-0.5 text-xs " +
-                  (deviceCount > 0
-                    ? "bg-green-900 text-green-300"
-                    : "bg-neutral-800 text-neutral-400")
-                }
-              >
-                {deviceCount} connected
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <div className="rounded-2xl border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <h2 className="text-sm font-medium text-neutral-300">Case study</h2>
@@ -867,6 +795,16 @@ export default function Home() {
         </aside>
       </div>
     </main>
+  );
+}
+
+// A compact pill showing a status label + on/off dot (control bar).
+function StatusChip({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-panel-2 px-2 py-0.5 text-ink-muted">
+      <span className={"inline-block h-1.5 w-1.5 rounded-full " + (ok ? "bg-sage" : "bg-taupe-grey")} />
+      {label}
+    </span>
   );
 }
 
