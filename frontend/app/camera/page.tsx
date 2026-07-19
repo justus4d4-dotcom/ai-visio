@@ -364,48 +364,23 @@ export default function CameraCapture() {
   const zoomStops = buildZoomStops(zoomRange.min, zoomRange.max);
 
   return (
-    <main className="fixed inset-0 overflow-hidden bg-black text-neutral-100">
-      {/* Full-screen viewfinder — fills the screen in portrait AND landscape. */}
-      <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-contain"
-        muted
-        playsInline
-      />
-      <canvas
-        ref={overlayRef}
-        className="absolute inset-0 h-full w-full touch-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      />
-
-      {!ready && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center">
-          <p className="max-w-xs text-sm text-neutral-400">
-            Point the rear camera at the screen. The monitor is detected and masked
-            automatically — drag the corners if needed.
-          </p>
-        </div>
-      )}
-
-      {/* Top bar (overlay). */}
-      <header className="safe-top absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-6 pt-3">
+    <main className="fixed inset-0 flex flex-col overflow-hidden bg-app text-ink">
+      {/* Top bar */}
+      <header className="safe-top flex shrink-0 items-center justify-between gap-2 border-b border-line bg-panel px-4 py-2.5">
         <button
           onClick={exitToApp}
-          className="flex items-center gap-1.5 rounded-full bg-neutral-900/80 px-3 py-2 text-sm font-medium backdrop-blur active:bg-neutral-800"
+          className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink active:bg-panel-2"
         >
           <span aria-hidden>←</span> App
         </button>
-        <span className="flex items-center gap-2 rounded-full bg-neutral-900/70 px-3 py-1.5 text-xs backdrop-blur">
+        <span className="flex items-center gap-2 rounded-full bg-panel-2 px-3 py-1.5 text-xs text-ink-muted">
           <span
             className={
               "inline-block h-2 w-2 rounded-full " +
               (status === "streaming"
-                ? "bg-green-500 animate-pulse"
+                ? "bg-sage animate-pulse"
                 : status === "idle"
-                  ? "bg-neutral-500"
+                  ? "bg-taupe-grey"
                   : "bg-red-500")
             }
           />
@@ -413,53 +388,80 @@ export default function CameraCapture() {
         </span>
       </header>
 
-      {/* Zoom control (overlay, only when supported). */}
-      {ready && zoomSupported && zoomStops.length > 1 && (
-        <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-neutral-900/80 backdrop-blur">
-          {zoomStops.map((z) => (
-            <button
-              key={z}
-              onClick={() => applyZoom(z)}
-              className={
-                "px-3 py-2.5 text-sm font-semibold " +
-                (Math.abs(zoom - z) < 0.05
-                  ? "bg-indigo-600 text-white"
-                  : "text-neutral-200 active:bg-neutral-800")
-              }
-            >
-              {z % 1 === 0 ? `${z}×` : `${z.toFixed(1)}×`}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Viewfinder — fills the height between the two bars. */}
+      <div className="relative min-h-0 flex-1 bg-black">
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-contain"
+          muted
+          playsInline
+        />
+        <canvas
+          ref={overlayRef}
+          className="absolute inset-0 h-full w-full touch-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        />
 
-      {/* Transient hint (auto-detect result, etc.). */}
-      {hint && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
-          <span className="rounded-full bg-black/80 px-4 py-2 text-center text-xs text-neutral-100 backdrop-blur">
-            {hint}
-          </span>
-        </div>
-      )}
-
-      {error && (
-        <div className="absolute inset-x-3 bottom-24 z-20 rounded-lg border border-red-900 bg-red-950/90 p-3 text-sm text-red-300 backdrop-blur">
-          {error}
-          {insecure && (
-            <p className="mt-2 text-xs text-red-400">
-              Open this page via <code>https://…</code> or <code>localhost</code>. On the LAN,
-              put the frontend behind HTTPS (self-signed cert or a reverse proxy).
+        {!ready && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center">
+            <p className="max-w-xs text-sm text-neutral-300">
+              Point the rear camera at the screen. The monitor is detected and masked
+              automatically — drag the corners if needed.
             </p>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Bottom controls (overlay). */}
-      <div className="safe-bottom absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/70 to-transparent px-3 pb-3 pt-8">
+      {/* Zoom control (only when supported). */}
+        {ready && zoomSupported && zoomStops.length > 1 && (
+          <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-full bg-black/60 backdrop-blur">
+            {zoomStops.map((z) => (
+              <button
+                key={z}
+                onClick={() => applyZoom(z)}
+                className={
+                  "px-3 py-2.5 text-sm font-semibold " +
+                  (Math.abs(zoom - z) < 0.05
+                    ? "bg-accent text-accent-ink"
+                    : "text-neutral-100 active:bg-white/10")
+                }
+              >
+                {z % 1 === 0 ? `${z}×` : `${z.toFixed(1)}×`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Transient hint (auto-detect result, etc.). */}
+        {hint && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-4">
+            <span className="rounded-full bg-black/80 px-4 py-2 text-center text-xs text-neutral-100 backdrop-blur">
+              {hint}
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <div className="absolute inset-x-3 bottom-3 z-20 rounded-lg border border-red-500/50 bg-red-950/90 p-3 text-sm text-red-200 backdrop-blur">
+            {error}
+            {insecure && (
+              <p className="mt-2 text-xs text-red-300">
+                Open this page via <code>https://…</code> or <code>localhost</code>. On the LAN,
+                put the frontend behind HTTPS (self-signed cert or a reverse proxy).
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom bar — controls. */}
+      <div className="safe-bottom shrink-0 border-t border-line bg-panel px-3 pb-3 pt-3">
         {!ready ? (
           <button
             onClick={startCamera}
-            className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-base font-semibold active:bg-indigo-500"
+            className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-accent-ink active:bg-accent/90"
           >
             Open camera
           </button>
@@ -468,41 +470,41 @@ export default function CameraCapture() {
             <div className="flex gap-2">
               <button
                 onClick={() => runAutoDetect(true)}
-                className="flex-1 rounded-xl border border-neutral-700 px-3 py-3 text-sm font-medium active:bg-neutral-800"
+                className="flex-1 rounded-xl border border-line px-3 py-3 text-sm font-medium text-ink active:bg-panel-2"
               >
                 Auto-detect
               </button>
               {!streaming ? (
                 <button
                   onClick={startStreaming}
-                  className="flex-[2] rounded-xl bg-indigo-600 px-4 py-3 text-base font-semibold active:bg-indigo-500"
+                  className="flex-[2] rounded-xl bg-accent px-4 py-3 text-base font-semibold text-accent-ink active:bg-accent/90"
                 >
                   Start streaming
                 </button>
               ) : (
                 <button
                   onClick={stopStreaming}
-                  className="flex-[2] rounded-xl bg-red-600 px-4 py-3 text-base font-semibold active:bg-red-500"
+                  className="flex-[2] rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white active:bg-red-500"
                 >
                   Stop streaming
                 </button>
               )}
             </div>
 
-            <div className="mt-2 flex items-center justify-between text-xs text-neutral-400">
+            <div className="mt-2 flex items-center justify-between text-xs text-ink-muted">
               <button
                 onClick={() => setCorners(DEFAULT_CORNERS)}
-                className="rounded px-2 py-1 active:bg-neutral-800"
+                className="rounded px-2 py-1 active:bg-panel-2"
               >
                 Reset corners
               </button>
               <button
                 onClick={() => setShowAdvanced((v) => !v)}
-                className="rounded px-2 py-1 active:bg-neutral-800"
+                className="rounded px-2 py-1 active:bg-panel-2"
               >
                 {showAdvanced ? "Hide options" : "Options"}
               </button>
-              <button onClick={stopCamera} className="rounded px-2 py-1 active:bg-neutral-800">
+              <button onClick={stopCamera} className="rounded px-2 py-1 active:bg-panel-2">
                 Close camera
               </button>
             </div>
@@ -510,11 +512,11 @@ export default function CameraCapture() {
             {showAdvanced && (
               <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
                 <label className="flex flex-col gap-1">
-                  <span className="text-neutral-400">Output size</span>
+                  <span className="text-ink-muted">Output size</span>
                   <select
                     value={preset}
                     onChange={(e) => setPreset(Number(e.target.value))}
-                    className="rounded-lg border border-neutral-700 bg-neutral-950 p-2.5"
+                    className="rounded-lg border border-line bg-app p-2.5 text-ink"
                   >
                     {OUTPUT_PRESETS.map((p, i) => (
                       <option key={p.label} value={i}>
@@ -524,14 +526,14 @@ export default function CameraCapture() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-neutral-400">Stream FPS (max 30)</span>
+                  <span className="text-ink-muted">Stream FPS (max 30)</span>
                   <input
                     type="number"
                     min={1}
                     max={30}
                     value={fps}
                     onChange={(e) => setFps(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
-                    className="rounded-lg border border-neutral-700 bg-neutral-950 p-2.5"
+                    className="rounded-lg border border-line bg-app p-2.5 text-ink"
                   />
                 </label>
               </div>
