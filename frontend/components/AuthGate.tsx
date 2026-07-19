@@ -15,19 +15,31 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    // Never hang on "Loading…" — if the check stalls (e.g. after an iOS PWA reload with a
+    // flaky network), fall through to the app shell instead of a dead loading screen.
+    const timeout = setTimeout(() => controller.abort(), 6000);
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
+        const res = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
         const data = await res.json();
         if (cancelled) return;
         setState(!data.auth_required || data.authenticated ? "open" : "needLogin");
       } catch {
-        // If we can't reach the backend, don't lock the user out of the shell.
+        // If we can't reach the backend (or the check timed out), don't lock the user
+        // out of the shell.
         if (!cancelled) setState("open");
+      } finally {
+        clearTimeout(timeout);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 

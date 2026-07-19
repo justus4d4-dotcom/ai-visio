@@ -129,9 +129,12 @@ export default function CameraCapture() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
+          // Keep the capture modest: a 1080p/30 texture is a large, constant GPU/video
+          // allocation that pushes iOS PWAs over their memory budget and gets the tab
+          // killed. 720p/24 is plenty for reading a screen after the warp.
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24, max: 30 },
         },
         audio: false,
       });
@@ -208,7 +211,12 @@ export default function CameraCapture() {
   // Draw the mask (dim outside the quad) + the quad outline + corner handles.
   useEffect(() => {
     let raf = 0;
-    const draw = () => {
+    let last = 0;
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      // Cap the overlay redraw to ~30fps — 60fps wakeups add pointless load on phones.
+      if (now - last < 33) return;
+      last = now;
       const canvas = overlayRef.current;
       const video = videoRef.current;
       if (canvas && video && video.videoWidth) {
@@ -259,7 +267,6 @@ export default function CameraCapture() {
           }
         }
       }
-      raf = requestAnimationFrame(draw);
     };
     if (ready) raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
