@@ -28,6 +28,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Static: no pinch/tap zoom, so the app behaves like a native surface.
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
   // Extend the layout under the notch / rounded corners so full-screen camera works.
   viewportFit: "cover",
   themeColor: "#1a1d26",

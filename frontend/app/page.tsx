@@ -519,7 +519,7 @@ export default function Home() {
           : "Browser idle";
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl p-4 sm:p-6">
+    <main className="mx-auto min-h-[100dvh] max-w-6xl p-4 sm:p-6">
       <TopNav
         onSettings={() => setShowSettings(true)}
         onAccountAction={(a: AccountAction) => {
@@ -796,7 +796,9 @@ export default function Home() {
                     <p className="mb-1 text-[10px] uppercase tracking-wide text-ink-muted">
                       Frame {i + 1}
                     </p>
-                    <p className="whitespace-pre-wrap text-xs text-ink">{s}</p>
+                    <div className="text-ink">
+                      <Markdown>{s}</Markdown>
+                    </div>
                   </div>
                 ))}
               </div>

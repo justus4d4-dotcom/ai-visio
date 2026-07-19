@@ -38,18 +38,20 @@ body {
   background: rgb(var(--app-bg));
   color: rgb(var(--ink));
   /* Mobile ergonomics: no rubber-band scroll chaining, no tap flash, no accidental text
-     selection while dragging the camera corner handles. */
+     selection while dragging the camera corner handles, and no double-tap zoom. */
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
-/* Safe-area helpers for full-bleed layouts (camera page) on notched phones. */
+/* Safe-area helpers for full-bleed layouts (camera page) on notched phones. A minimum
+   keeps controls clear of the home indicator / gesture bar even when the inset reads 0. */
 .safe-top {
-  padding-top: env(safe-area-inset-top);
+  padding-top: max(env(safe-area-inset-top), 0.5rem);
 }
 .safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
 
 /* Markdown rendering for model output (no typography plugin; kept minimal + themed). */

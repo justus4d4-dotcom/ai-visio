@@ -364,7 +364,7 @@ export default function CameraCapture() {
   const zoomStops = buildZoomStops(zoomRange.min, zoomRange.max);
 
   return (
-    <main className="fixed inset-x-0 top-0 h-[100dvh] overflow-hidden bg-black text-neutral-100">
+    <main className="fixed inset-0 overflow-hidden bg-black text-neutral-100">
       {/* Full-screen viewfinder — fills the screen in portrait AND landscape. */}
       <video
         ref={videoRef}
