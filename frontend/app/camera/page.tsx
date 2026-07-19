@@ -330,6 +330,15 @@ export default function CameraCapture() {
     // Stream rate: the push loop was previously floored at 250ms (≈4 fps) regardless of
     // this setting, so raising it did nothing. Honour it up to 30 fps (33ms floor).
     const period = Math.max(33, 1000 / Math.min(30, Math.max(1, fps)));
+    // Only push status into React state when it actually changes — otherwise every frame
+    // (up to 30/s) re-renders the whole camera component, adding needless GC pressure.
+    let lastStatus = "streaming";
+    const pushStatus = (s: string) => {
+      if (s !== lastStatus) {
+        lastStatus = s;
+        setStatus(s);
+      }
+    };
 
     const tick = async () => {
       if (cancelled || !streamingRef.current) return;
@@ -344,9 +353,9 @@ export default function CameraCapture() {
           form.append("image", blob, "camera.jpg");
           try {
             const r = await fetch(`${API_URL}/api/remote/camera/frame`, { method: "POST", body: form });
-            setStatus(r.ok ? "streaming" : `error ${r.status}`);
+            pushStatus(r.ok ? "streaming" : `error ${r.status}`);
           } catch {
-            setStatus("offline — check the server address");
+            pushStatus("offline — check the server address");
           }
         }
       }

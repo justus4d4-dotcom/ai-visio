@@ -70,8 +70,10 @@ export function warpQuadToCanvas(
   outW: number,
   outH: number,
 ): void {
-  out.width = outW;
-  out.height = outH;
+  // Only (re)size the canvas when the target changes: reassigning width/height every
+  // frame reallocates + clears the backing store, which thrashes memory on phones.
+  if (out.width !== outW) out.width = outW;
+  if (out.height !== outH) out.height = outH;
   const ctx = out.getContext("2d");
   if (!ctx) return;
 
@@ -84,7 +86,10 @@ export function warpQuadToCanvas(
   ];
   const H = solveHomography(dstRect, srcQuad);
 
-  const GRID = 24;
+  // A monitor is near-planar, so a coarse mesh is visually indistinguishable from a fine
+  // one but ~4x cheaper per frame (fewer clipped drawImage calls) — critical on phones
+  // where a dense mesh at high fps overloads WebKit and crashes the tab.
+  const GRID = 12;
   // Precompute the source position of every grid vertex.
   const pts: Point[][] = [];
   for (let gy = 0; gy <= GRID; gy++) {
