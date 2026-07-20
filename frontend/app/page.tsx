@@ -14,6 +14,7 @@ import {
   type SolveResult,
 } from "@/lib/settings";
 import { aHashFromBlob, aHashFromVideo, hamming } from "@/lib/vision";
+import { startPolling } from "@/lib/poll";
 import Drawer from "@/components/Drawer";
 import Markdown from "@/components/Markdown";
 import UpdateBanner from "@/components/UpdateBanner";
@@ -337,7 +338,7 @@ export default function Home() {
       return;
     }
     setAutoStatus("watching");
-    const id = setInterval(async () => {
+    const stop = startPolling(async () => {
       if (busyRef.current) return;
       // Sample the current frame from whichever source is selected.
       let cur: string | null = null;
@@ -362,7 +363,7 @@ export default function Home() {
       }
     }, Math.max(1, intervalSec) * 1000);
 
-    return () => clearInterval(id);
+    return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, capturing, agentOnline, cameraOnline, captureSource, intervalSec, cfg]);
 
@@ -384,18 +385,15 @@ export default function Home() {
 
   // Keep the selected source + agent status in sync with the backend.
   useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const s = await fetch(`${API_URL}/api/remote/source`).then((r) => r.json());
-        setCaptureSource(s.source === "agent" ? "agent" : s.source === "camera" ? "camera" : "browser");
-        setAgentOnline(Boolean(s.agent_online));
-        setCameraOnline(Boolean(s.camera_online));
-        setAgentCount(s.agent_count ?? 0);
-      } catch {
-        /* ignore */
-      }
+    return startPolling(async () => {
+      const r = await fetch(`${API_URL}/api/remote/source`);
+      if (!r.ok) throw new Error(String(r.status));
+      const s = await r.json();
+      setCaptureSource(s.source === "agent" ? "agent" : s.source === "camera" ? "camera" : "browser");
+      setAgentOnline(Boolean(s.agent_online));
+      setCameraOnline(Boolean(s.camera_online));
+      setAgentCount(s.agent_count ?? 0);
     }, 1500);
-    return () => clearInterval(id);
   }, []);
 
   // Stream the native-agent preview by fetching frames and swapping the shown image only
@@ -424,11 +422,10 @@ export default function Home() {
         }
       }
     };
-    tick();
-    const id = setInterval(tick, 1000);
+    const stop = startPolling(tick, 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [captureSource]);
@@ -453,54 +450,49 @@ export default function Home() {
         body: JSON.stringify(body),
       });
 
-    const id = setInterval(async () => {
-      try {
-        const poll = await fetch(`${API_URL}/api/remote/poll`).then((r) => r.json());
-        if (poll.triggered && !busyRef.current && !stopped) {
-          if (poll.action === "scenario") {
-            // Case-study capture triggered from the ESP32: transcribe + cache the
-            // current screen, then report the running count back to the device.
-            const ok = await captureScenario();
-            await post("scenario", { ok, count: caseScenariosRef.current.length });
-          } else if (poll.action === "clear_case") {
-            // The device left case-study mode: drop all cached scenario content.
-            clearCase();
+    const stop = startPolling(async () => {
+      const r = await fetch(`${API_URL}/api/remote/poll`);
+      if (!r.ok) throw new Error(String(r.status));
+      const poll = await r.json();
+      if (poll.triggered && !busyRef.current && !stopped) {
+        if (poll.action === "scenario") {
+          // Case-study capture triggered from the ESP32: transcribe + cache the
+          // current screen, then report the running count back to the device.
+          const ok = await captureScenario();
+          await post("scenario", { ok, count: caseScenariosRef.current.length });
+        } else if (poll.action === "clear_case") {
+          // The device left case-study mode: drop all cached scenario content.
+          clearCase();
+        } else {
+          setRemoteStatus("solving");
+          await post("status", { status: "solving" });
+          const result = await solveNow();
+          if (result) {
+            await post("answer", result);
+            setRemoteStatus("done");
           } else {
-            setRemoteStatus("solving");
-            await post("status", { status: "solving" });
-            const result = await solveNow();
-            if (result) {
-              await post("answer", result);
-              setRemoteStatus("done");
-            } else {
-              await post("status", { status: "error" });
-              setRemoteStatus("error");
-            }
+            await post("status", { status: "error" });
+            setRemoteStatus("error");
           }
         }
-      } catch {
-        /* network blip; ignore */
       }
     }, 1200);
 
     return () => {
       stopped = true;
-      clearInterval(id);
+      stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capturing, cfg, captureSource, agentOnline, cameraOnline]);
 
   // Poll how many ESP32 devices are connected over WebSocket.
   useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const d = await fetch(`${API_URL}/api/remote/devices`).then((r) => r.json());
-        setDeviceCount(d.count ?? 0);
-      } catch {
-        /* ignore */
-      }
+    return startPolling(async () => {
+      const r = await fetch(`${API_URL}/api/remote/devices`);
+      if (!r.ok) throw new Error(String(r.status));
+      const d = await r.json();
+      setDeviceCount(d.count ?? 0);
     }, 3000);
-    return () => clearInterval(id);
   }, []);
 
   const previewOnline =

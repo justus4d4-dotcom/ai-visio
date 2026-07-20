@@ -81,6 +81,7 @@ def add_user(body: AddUser, request: Request, db: Session = Depends(get_db)) -> 
             )
         )
     db.commit()
+    auth.invalidate_allowlist_cache()
     return {"ok": True}
 
 
@@ -94,6 +95,7 @@ def update_user(
         raise HTTPException(status_code=404, detail="That user isn't managed here.")
     row.is_admin = body.is_admin
     db.commit()
+    auth.invalidate_allowlist_cache()
     return {"ok": True}
 
 
@@ -107,4 +109,5 @@ def remove_user(email: str, request: Request, db: Session = Depends(get_db)) -> 
     if row is not None:
         db.delete(row)
         db.commit()
+        auth.invalidate_allowlist_cache()
     return {"ok": True}

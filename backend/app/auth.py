@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import datetime as dt
 import secrets
+import threading
+import time
 from urllib.parse import urlencode
 
 import httpx
@@ -101,20 +103,54 @@ async def exchange_code_for_profile(code: str) -> dict | None:
     }
 
 
+_allowlist_cache: dict[str, bool] | None = None
+_allowlist_cache_at: float = 0.0
+_allowlist_lock = threading.Lock()
+_ALLOWLIST_TTL_SECONDS = 30.0
+
+
 def _db_allowlist() -> dict[str, bool]:
     """The DB-managed allowlist as ``{email: is_admin}``.
+
+    Cached in-process for a short TTL because this runs inside the per-request auth
+    middleware — without the cache, every single ``/api/*`` request issued a full
+    ``SELECT * FROM allowed_emails``, which drained the connection pool under load and
+    stalled the whole API. The allowlist changes rarely (admin edits), so a 30s TTL is
+    safe; ``invalidate_allowlist_cache()`` forces an immediate refresh after a change.
 
     Tolerant of any error (e.g. the table not existing pre-migration) so auth never
     hard-fails on a database hiccup — it just falls back to the env-based allowlist.
     """
+    global _allowlist_cache, _allowlist_cache_at
+    now = time.monotonic()
+    cached = _allowlist_cache
+    if cached is not None and (now - _allowlist_cache_at) < _ALLOWLIST_TTL_SECONDS:
+        return cached
     try:
         from app.database import SessionLocal
         from app.models import AllowedEmail
 
         with SessionLocal() as db:
-            return {r.email.lower(): bool(r.is_admin) for r in db.query(AllowedEmail).all()}
+            fresh = {r.email.lower(): bool(r.is_admin) for r in db.query(AllowedEmail).all()}
     except Exception:  # noqa: BLE001 - never let auth crash on a DB read
-        return {}
+        # Reuse the last good snapshot if we have one; otherwise fall back to empty.
+        return cached if cached is not None else {}
+    with _allowlist_lock:
+        _allowlist_cache = fresh
+        _allowlist_cache_at = now
+    return fresh
+
+
+def invalidate_allowlist_cache() -> None:
+    """Drop the cached allowlist so the next auth check re-reads from the DB.
+
+    Call this after any write to the ``allowed_emails`` table so admin changes take
+    effect immediately instead of waiting for the TTL to expire.
+    """
+    global _allowlist_cache, _allowlist_cache_at
+    with _allowlist_lock:
+        _allowlist_cache = None
+        _allowlist_cache_at = 0.0
 
 
 def email_allowed(email: str) -> bool:
