@@ -92,8 +92,9 @@ Arduino IDE OTA: after the first USB flash, the device also appears under
    (e.g. `http://192.0.2.10:8000` — the host running the FastAPI backend).
 4. Save. The device reboots, connects, and shows **Tap to solve**.
 
-Settings are stored in NVS. To re-provision, **hold a finger on the screen while
-powering on** — this wipes WiFi + server settings and reopens the portal.
+Settings are stored in NVS and are retained across an HTTP OTA update. To
+re-provision, **hold a finger on the screen for 1.5 seconds while powering on** —
+this intentionally wipes WiFiManager's saved network and reopens the portal.
 
 ## Alternative: deploy with the Arduino IDE
 

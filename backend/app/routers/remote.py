@@ -89,6 +89,46 @@ _capture: dict[str, object] = {
     "user_key": None,
 }
 
+
+_DEVICE_PROFILE_FIELDS = {
+    "mac": 32,
+    "wifi_ssid": 64,
+    "ip_address": 64,
+    "backend_url": 256,
+    "version": 64,
+}
+
+
+def _store_device_profile(message: dict[str, object]) -> None:
+    """Persist non-secret ESP metadata in the active user's encrypted settings."""
+    user_key = _capture.get("user_key")
+    if not isinstance(user_key, str) or not user_key:
+        return
+
+    profile = {
+        key: value.strip()[:max_length]
+        for key, max_length in _DEVICE_PROFILE_FIELDS.items()
+        if isinstance((value := message.get(key)), str) and value.strip()
+    }
+    mac = profile.get("mac")
+    if not mac:
+        return
+
+    with SessionLocal() as db:
+        settings = settings_store.get_settings(db, user_key)
+        profiles = settings.get("device_profiles")
+        if not isinstance(profiles, dict):
+            profiles = {}
+        previous = profiles.get(mac)
+        profiles[mac] = {
+            **(previous if isinstance(previous, dict) else {}),
+            **profile,
+            "updated_at": dt.datetime.now(dt.UTC).isoformat(),
+        }
+        settings["device_profiles"] = profiles
+        settings_store.set_settings(db, user_key, settings)
+
+
 # The iPhone camera source keeps its own frame slot, separate from the agent's, so a
 # running native agent and a phone can be swapped without one clobbering the other's
 # preview. The phone already crops/deskews the screen out of its camera view before
@@ -635,10 +675,11 @@ async def device_ws(ws: WebSocket) -> None:
                 # Camera/agent sources solve server-side; browser capture still polls.
                 _request("solve")
             elif msg.get("type") == "hello":
-                # The device announced its firmware version on connect.
+                # The device announced its firmware and non-secret provisioning metadata.
                 v = msg.get("version")
                 if isinstance(v, str) and v:
                     hub.set_version(cid, v)
+                _store_device_profile(msg)
             elif msg.get("type") == "capture_scenario":
                 # Case-study mode: the device asked to capture the current screen as a
                 # scenario. The browser transcribes + caches it (it holds the API key).

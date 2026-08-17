@@ -707,8 +707,20 @@ static void onWsEvent(WStype_t type, uint8_t* payload, size_t len) {
     case WStype_CONNECTED:
       g_wsConnected = true;
       if (g_state == UiState::Connecting) g_state = UiState::Idle;
-      // Announce our firmware version so the backend can show it per-device.
-      g_ws.sendTXT("{\"type\":\"hello\",\"version\":\"" FW_VERSION "\"}");
+      // Report non-secret provisioning metadata so the selected user's account
+      // keeps an audit of the display's network and backend target.
+      {
+        JsonDocument hello;
+        hello["type"] = "hello";
+        hello["version"] = FW_VERSION;
+        hello["mac"] = WiFi.macAddress();
+        hello["wifi_ssid"] = WiFi.SSID();
+        hello["ip_address"] = WiFi.localIP().toString();
+        hello["backend_url"] = g_serverUrl;
+        String message;
+        serializeJson(hello, message);
+        g_ws.sendTXT(message);
+      }
       break;
     case WStype_DISCONNECTED:
       g_wsConnected = false;
@@ -802,6 +814,17 @@ static void performHttpOta(const String& url) {
 static bool touchPressed() {
   int32_t x, y;
   return lcd.getTouch(&x, &y);
+}
+
+static bool factoryResetRequested() {
+  static const uint32_t FACTORY_RESET_HOLD_MS = 1500;
+  if (!touchPressed()) return false;
+  const uint32_t startedAt = millis();
+  while (millis() - startedAt < FACTORY_RESET_HOLD_MS) {
+    if (!touchPressed()) return false;
+    delay(25);
+  }
+  return true;
 }
 
 // Taps whose press point is further than this from the centre are ignored, so resting a
@@ -1064,9 +1087,9 @@ void setup() {
 
   loadServerUrl();
 
-  // Hold a touch during boot to force the setup portal (and wipe saved WiFi).
-  delay(150);
-  const bool forcePortal = touchPressed();
+  // A deliberate hold avoids treating an OTA reboot's transient touch reading as
+  // a reset request, which would otherwise clear WiFiManager's saved network.
+  const bool forcePortal = factoryResetRequested();
   if (forcePortal) {
     wifiManager.resetSettings();
   }
@@ -1076,9 +1099,11 @@ void setup() {
   if (!forcePortal) {
     connected = connectWifiDirect();
   }
-  // Fall back to the captive portal, which shows a QR to join the device.
+  // Fall back to saved WiFiManager credentials before opening the captive portal.
+  // Generic release firmware has no compiled WiFi credentials, so autoConnect is
+  // what preserves the existing network configuration across an OTA reboot.
   if (!connected) {
-    runProvisioning(true);
+    runProvisioning(forcePortal);
   }
 
 #ifdef WIFI_SSID
