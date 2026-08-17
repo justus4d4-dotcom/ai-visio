@@ -37,7 +37,7 @@
 // Firmware version reported to the backend on connect (shown per-device in Settings).
 // Bump this on each firmware-affecting release. Override via build_flags if desired.
 #ifndef FW_VERSION
-#define FW_VERSION "v0.22.8"
+#define FW_VERSION "v0.22.15"
 #endif
 
 // Optional built-in WiFi credentials (auto-connect without the setup portal) and a
@@ -909,6 +909,69 @@ static void saveServerUrl(const String& url) {
   g_serverUrl = url;
 }
 
+// A short physical-serial provisioning window is available before the captive
+// portal starts. This recovers devices whose SoftAP cannot be started.
+static bool provisionFromSerial() {
+  static const uint32_t SERIAL_PROVISION_WINDOW_MS = 20000;
+  Serial.println("[serial] Send WIFI|ssid|password|http://host:port within 20 seconds");
+  renderConnecting("serial WiFi 20s");
+
+  String line;
+  const uint32_t startedAt = millis();
+  while (millis() - startedAt < SERIAL_PROVISION_WINDOW_MS) {
+    while (Serial.available()) {
+      const char ch = (char)Serial.read();
+      if (ch == '\r') continue;
+      if (ch != '\n') {
+        if (line.length() < 255) line += ch;
+        continue;
+      }
+
+      line.trim();
+      const int first = line.indexOf('|');
+      const int second = first < 0 ? -1 : line.indexOf('|', first + 1);
+      const int third = second < 0 ? -1 : line.indexOf('|', second + 1);
+      if (!line.startsWith("WIFI|") || first != 4 || second < 5 || third < 0) {
+        Serial.println("[serial] Invalid command");
+        line = "";
+        continue;
+      }
+
+      const String ssid = line.substring(first + 1, second);
+      const String password = line.substring(second + 1, third);
+      String serverUrl = line.substring(third + 1);
+      serverUrl.trim();
+      while (serverUrl.endsWith("/")) serverUrl.remove(serverUrl.length() - 1);
+      if (ssid.isEmpty() || serverUrl.isEmpty()) {
+        Serial.println("[serial] SSID and backend URL are required");
+        line = "";
+        continue;
+      }
+
+      WiFi.mode(WIFI_STA);
+      WiFi.persistent(true);
+      WiFi.begin(ssid.c_str(), password.c_str());
+      const uint32_t connectStartedAt = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - connectStartedAt < 15000) {
+        delay(250);
+      }
+      WiFi.persistent(false);
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.printf("[serial] WiFi failed: status %d\n", (int)WiFi.status());
+        line = "";
+        continue;
+      }
+
+      saveServerUrl(serverUrl);
+      Serial.printf("[serial] Connected to %s; IP %s\n",
+                    ssid.c_str(), WiFi.localIP().toString().c_str());
+      return true;
+    }
+    delay(10);
+  }
+  return false;
+}
+
 // Add the backend-URL parameter to the portal exactly once (it is reused).
 static void ensureParamAdded() {
   if (!g_paramAdded) {
@@ -1098,10 +1161,11 @@ void setup() {
     wifiManager.resetSettings();
   }
 
+  // A deliberate boot touch opens the physical serial recovery window.
+  bool connected = forcePortal && provisionFromSerial();
   // Fast path: try the built-in WiFi credentials first (no portal needed).
-  bool connected = false;
   if (!forcePortal) {
-    connected = connectWifiDirect();
+    connected = connected || connectWifiDirect();
   }
   // Fall back to saved WiFiManager credentials before opening the captive portal.
   // Generic release firmware has no compiled WiFi credentials, so autoConnect is

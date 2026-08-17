@@ -105,6 +105,19 @@ Settings are stored in NVS and are retained across an HTTP OTA update. To
 re-provision, **hold a finger on the screen for 1.5 seconds while powering on** —
 this intentionally wipes WiFiManager's saved network and reopens the portal.
 
+### Serial recovery when the setup AP is unavailable
+
+Hold a finger on the display while powering on, then use the USB serial console
+at 115200 baud. For 20 seconds, it accepts:
+
+```text
+WIFI|your-ssid|your-password|http://backend-host:8000
+```
+
+This stores the WiFi credentials in ESP NVS and the backend URL in the device
+settings. It is intended for physical recovery only; do not paste the command
+into a shared terminal because it contains the WiFi password.
+
 ## Alternative: deploy with the Arduino IDE
 
 If PlatformIO/esptool can't flash over the CH343 USB-UART bridge, use the Arduino
