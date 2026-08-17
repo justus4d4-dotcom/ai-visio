@@ -940,6 +940,9 @@ static void runProvisioning(bool forcePortal) {
   ensureParamAdded();
   wifiManager.setSaveParamsCallback(saveParamsCallback);
   wifiManager.setConfigPortalBlocking(true);
+  // WiFiManager otherwise delegates to an unbounded ESP32 connection wait, which
+  // leaves the display on "connecting WiFi..." forever when saved credentials fail.
+  wifiManager.setConnectTimeout(15);
   wifiManager.setConfigPortalTimeout(0);
   wifiManager.setAPCallback([](WiFiManager*) {
     if (setupAccessPointReady()) renderSetupQR();
