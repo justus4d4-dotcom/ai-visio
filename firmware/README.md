@@ -55,6 +55,12 @@ pio device monitor      # serial logs @ 115200
 VS Code: install the **PlatformIO IDE** extension, open this `firmware/` folder,
 then use the PlatformIO toolbar (build / upload / monitor).
 
+## GitHub release firmware
+
+Every GitHub release contains an `ai-visio-display-v*.bin` asset built for the
+`waveshare-s3-round` environment. In Settings → Devices, choose **Load latest
+from GitHub** to stage that image, then deploy it to a connected display.
+
 ## Over-the-air (OTA) updates (from VS Code)
 
 After the **first** USB flash, all later updates can go over WiFi — no cable
