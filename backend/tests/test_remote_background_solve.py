@@ -159,6 +159,49 @@ def test_source_change_is_broadcast_to_connected_displays(
     ]
 
 
+def test_device_profile_persists_non_secret_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved: dict[str, object] = {}
+
+    class FakeSession:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def get_settings(db: object, user_key: str) -> dict[str, object]:
+        assert user_key == "owner@example.com"
+        return {"provider": {"model": "gemini-test"}}
+
+    def set_settings(db: object, user_key: str, data: dict[str, object]) -> None:
+        assert user_key == "owner@example.com"
+        saved.update(data)
+
+    monkeypatch.setattr(remote, "SessionLocal", FakeSession)
+    monkeypatch.setattr(remote.settings_store, "get_settings", get_settings)
+    monkeypatch.setattr(remote.settings_store, "set_settings", set_settings)
+    monkeypatch.setitem(remote._capture, "user_key", "owner@example.com")
+
+    remote._store_device_profile(
+        {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "wifi_ssid": "Office WiFi",
+            "ip_address": "192.168.1.24",
+            "backend_url": "http://192.168.1.2:8000",
+            "version": "v0.22.9",
+            "wifi_password": "must-not-be-stored",
+        }
+    )
+
+    profile = saved["device_profiles"]["AA:BB:CC:DD:EE:FF"]  # type: ignore[index]
+    assert profile["wifi_ssid"] == "Office WiFi"  # type: ignore[index]
+    assert profile["ip_address"] == "192.168.1.24"  # type: ignore[index]
+    assert profile["backend_url"] == "http://192.168.1.2:8000"  # type: ignore[index]
+    assert "wifi_password" not in profile  # type: ignore[operator]
+
+
 def test_case_study_solve_remains_available_to_browser_poll() -> None:
     remote._capture["source"] = "camera"
     remote._state.update(status="idle", pending=False, scenario_count=2)

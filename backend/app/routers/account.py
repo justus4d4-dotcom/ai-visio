@@ -58,5 +58,9 @@ def get_settings(request: Request, db: Session = Depends(get_db)) -> dict:
 def put_settings(
     body: SettingsBody, request: Request, db: Session = Depends(get_db)
 ) -> dict:
-    settings_store.set_settings(db, auth.current_user_key(request), body.settings)
+    user_key = auth.current_user_key(request)
+    # Browser settings updates know only their editable sections. Preserve metadata
+    # reported by connected displays instead of letting a normal UI save erase it.
+    merged = {**settings_store.get_settings(db, user_key), **body.settings}
+    settings_store.set_settings(db, user_key, merged)
     return {"ok": True}
