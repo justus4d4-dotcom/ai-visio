@@ -85,6 +85,10 @@ under **Devices**.
 ## Security notes
 
 - API keys are encrypted at rest (Fernet) before being written to Postgres.
+- Local `.env` files, firmware Wi-Fi credentials, build output, and archives are ignored.
+  Copy a tracked `wifi_secrets.example.h` template when compiling firmware locally.
+- `deploy/validate-public-release.sh` rejects private files and legacy private identifiers
+  before publication; the same check runs in GitHub Actions.
 - Only whitelisted Google accounts can sign in; an **Admin** can add/remove emails.
 - The app is intended for your own LAN; do not expose it to the public internet without
   putting it behind a reverse proxy with TLS and additional auth.

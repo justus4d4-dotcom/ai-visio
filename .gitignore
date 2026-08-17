@@ -30,3 +30,7 @@ data/firmware/
 
 # PlatformIO firmware build output
 firmware/.pio/
+
+# Local firmware credentials (copy from the tracked *.example.h templates)
+firmware/src/wifi_secrets.h
+firmware/arduino/ai_visio_display/wifi_secrets.h

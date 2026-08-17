@@ -17,9 +17,8 @@ APP_USER="${APP_USER:-aivisio}"
 APP_DIR="${APP_DIR:-/opt/ai-visio}"
 REPO_URL="${REPO_URL:-https://github.com/justus4d4-dotcom/ai-visio}"
 REPO_REF="${REPO_REF:-main}"
-# For a PRIVATE repo, supply a GitHub token (a fine-grained PAT with read-only
-# "Contents" access, or a classic PAT with `repo` scope). It is used only to
-# fetch the code and is NOT written to disk (the stored remote stays tokenless).
+# For a private fork, supply a GitHub token with read-only Contents access. It is
+# used only to fetch the code and is not written to disk.
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 NODE_MAJOR="${NODE_MAJOR:-20}"
 
