@@ -486,7 +486,13 @@ static void renderOtaProgress(int pct) {
   canvas.pushSprite(0, 0);
 }
 
-// Show a WiFi QR for the device's setup AP so a phone can scan to join it.
+static bool setupAccessPointReady() {
+  const IPAddress ip = WiFi.softAPIP();
+  return WiFi.softAPSSID() == "ai-exams-setup" &&
+         (ip[0] != 0 || ip[1] != 0 || ip[2] != 0 || ip[3] != 0);
+}
+
+// Show a WiFi QR only after WiFiManager has successfully created the setup AP.
 static void renderSetupQR() {
   lcd.fillScreen(COL_BG);
   lcd.setTextDatum(textdatum_t::middle_center);
@@ -500,6 +506,18 @@ static void renderSetupQR() {
   lcd.qrcode("WIFI:S:ai-exams-setup;T:nopass;;", qx, qy, qr, 3);
   lcd.setTextColor(COL_MUTED, COL_BG);
   lcd.drawString("join 'ai-exams-setup'", CX, H - 16);
+}
+
+static void renderSetupAccessPointError() {
+  lcd.fillScreen(COL_BG);
+  lcd.setTextDatum(textdatum_t::middle_center);
+  lcd.setTextColor(COL_BAD, COL_BG);
+  lcd.setTextSize(2);
+  lcd.drawString("Setup WiFi", CX, CY - 24);
+  lcd.drawString("unavailable", CX, CY);
+  lcd.setTextColor(COL_MUTED, COL_BG);
+  lcd.setTextSize(1);
+  lcd.drawString("restart device and retry", CX, CY + 30);
 }
 
 // Shorten a string with a trailing ellipsis so it fits within maxWidth pixels.
@@ -922,9 +940,10 @@ static void runProvisioning(bool forcePortal) {
   ensureParamAdded();
   wifiManager.setSaveParamsCallback(saveParamsCallback);
   wifiManager.setConfigPortalBlocking(true);
-  wifiManager.setConfigPortalTimeout(180);
+  wifiManager.setConfigPortalTimeout(0);
   wifiManager.setAPCallback([](WiFiManager*) {
-    renderSetupQR();
+    if (setupAccessPointReady()) renderSetupQR();
+    else renderSetupAccessPointError();
   });
 
   bool connected;

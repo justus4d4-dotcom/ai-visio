@@ -86,8 +86,9 @@ Arduino IDE OTA: after the first USB flash, the device also appears under
 
 ## First-time setup (WiFi + backend URL)
 
-1. On first boot the device hosts a WiFi access point named **`ai-exams-setup`**.
-2. Join it from your phone/laptop; a captive portal opens.
+1. On first boot the device hosts a 2.4 GHz WiFi access point named
+   **`ai-exams-setup`**. The QR screen appears only after this access point is ready.
+2. Join it from your phone/laptop; a captive portal opens at `http://192.168.4.1`.
 3. Pick your WiFi network, enter its password, and set **Backend base URL**
    (e.g. `http://192.0.2.10:8000` — the host running the FastAPI backend).
 4. Save. The device reboots, connects, and shows **Tap to solve**.
