@@ -65,12 +65,25 @@ def _run_git(*args: str) -> str | None:
 def current_version() -> str:
     """The release/ref the deployment is currently on.
 
-    Prefers the nearest tag (``git describe``); falls back to the short commit, then
-    to the packaged app version so the UI always has something to show in dev.
+    Prefer the highest version tag pointing exactly at HEAD. Multiple release tags can
+    legitimately share a commit, and ``git describe`` otherwise picks one arbitrarily.
+    Ignore Next's generated type-reference file when deciding whether the deployment has
+    local source changes.
     """
-    described = _run_git("describe", "--tags", "--always", "--dirty")
-    if described:
-        return described
+    exact_tags = _run_git("tag", "--points-at", "HEAD", "--sort=-version:refname")
+    version = exact_tags.splitlines()[0] if exact_tags else _run_git(
+        "describe", "--tags", "--always"
+    )
+    if version:
+        dirty = _run_git(
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+            "--",
+            ".",
+            ":(exclude)frontend/next-env.d.ts",
+        )
+        return f"{version}-dirty" if dirty else version
     from app.main import app  # local import to avoid a cycle at module load
 
     return app.version

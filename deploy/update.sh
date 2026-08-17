@@ -115,6 +115,10 @@ log "Building frontend…"
 ( cd "$FRONTEND_DIR" && sudo -u "$APP_USER" pnpm install --frozen-lockfile 2>/dev/null \
   || sudo -u "$APP_USER" pnpm install ) || fail "pnpm install failed."
 ( cd "$FRONTEND_DIR" && sudo -u "$APP_USER" pnpm build ) || fail "pnpm build failed."
+# Next rewrites this tracked type-reference file differently for dev and production.
+# Restore it after the successful build so the deployed release remains a clean checkout.
+git -C "$APP_DIR" restore --worktree -- frontend/next-env.d.ts \
+  || fail "could not restore generated Next.js type references."
 
 # ── Refresh systemd units + restart ───────────────────────────────────────────
 log "Reinstalling systemd units…"
