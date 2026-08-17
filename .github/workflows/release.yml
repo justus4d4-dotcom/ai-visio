@@ -94,4 +94,5 @@ jobs:
           gh release create "$next" \
             --title "$next" \
             --target "$(git rev-parse HEAD)" \
-            --generate-notes
+            --generate-notes \
+            "firmware/.pio/build/waveshare-s3-round/firmware.bin#ai-visio-display-${next}.bin"
