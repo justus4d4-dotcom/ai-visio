@@ -193,62 +193,35 @@ static void drawConfidenceRing(float c) {
   }
 }
 
-static void drawSolveRing(bool animating) {
-  const int outer = CX - 6;
-  const int inner = CX - 2;
-  canvas.fillArc(CX, CY, outer, inner, 0, 360, COL_MUTED);
-  if (animating) {
-    const int start = (millis() / 4) % 360;
-    canvas.fillArc(CX, CY, outer, inner, start, start + 80, COL_ACCENT);
-  }
-}
-
-static void drawUpperTouchAction(const char* label) {
-  canvas.fillRoundRect(64, 0, 112, 12, 6, COL_ACCENT);
-  canvas.fillRoundRect(40, 12, 160, 16, 6, COL_ACCENT);
-  canvas.fillRoundRect(26, 28, 188, 24, 8, COL_ACCENT);
+static void drawCaseButton() {
+  const int bw = 92, bh = 28, by = 26;
+  const int bx = CX - bw / 2;
+  canvas.fillRoundRect(bx, by, bw, bh, 14, COL_ACCENT);
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(COL_BG, COL_ACCENT);
   canvas.setTextSize(1);
-  canvas.drawString(label, CX, 40);
+  canvas.drawString("Case Study", CX, by + bh / 2);
 }
 
-static void drawLowerTouchAction(const char* label) {
-  canvas.fillRoundRect(26, 188, 188, 24, 8, COL_BAD);
-  canvas.fillRoundRect(40, 212, 160, 16, 6, COL_BAD);
-  canvas.fillRoundRect(64, 228, 112, 12, 6, COL_BAD);
-  canvas.setTextDatum(textdatum_t::middle_center);
-  canvas.setTextColor(COL_TEXT, COL_BAD);
-  canvas.setTextSize(1);
-  canvas.drawString(label, CX, 200);
-}
-
-static void drawSourceIndicator() {
-  const int bw = 72;
+static void drawSourceIconPill() {
+  const int bw = 30;
   const int bh = 20;
   const int bx = CX - bw / 2;
   const int by = 202;
-  const char* label = "APP";
-  if (g_captureSource == "browser") label = "WEB";
-  else if (g_captureSource == "camera") label = "CAM";
   const uint16_t color = g_captureAvailable ? COL_ACCENT : COL_WARN;
 
   canvas.drawRoundRect(bx, by, bw, bh, 10, color);
   if (g_captureSource == "camera") {
-    canvas.drawRoundRect(bx + 9, by + 7, 14, 9, 2, color);
-    canvas.drawCircle(bx + 16, by + 11, 2, color);
-    canvas.fillRoundRect(bx + 12, by + 5, 6, 2, 1, color);
+    canvas.drawRoundRect(bx + 8, by + 7, 14, 9, 2, color);
+    canvas.drawCircle(bx + 15, by + 11, 2, color);
+    canvas.fillRoundRect(bx + 11, by + 5, 6, 2, 1, color);
   } else if (g_captureSource == "browser") {
-    canvas.drawRoundRect(bx + 9, by + 5, 14, 11, 2, color);
-    canvas.drawLine(bx + 10, by + 8, bx + 21, by + 8, color);
+    canvas.drawRoundRect(bx + 8, by + 5, 14, 11, 2, color);
+    canvas.drawLine(bx + 9, by + 8, bx + 20, by + 8, color);
   } else {
-    canvas.drawRoundRect(bx + 10, by + 5, 12, 8, 1, color);
-    canvas.drawLine(bx + 9, by + 15, bx + 23, by + 15, color);
+    canvas.drawRoundRect(bx + 9, by + 5, 12, 8, 1, color);
+    canvas.drawLine(bx + 8, by + 15, bx + 22, by + 15, color);
   }
-  canvas.setTextDatum(textdatum_t::middle_left);
-  canvas.setTextColor(color, COL_BG);
-  canvas.setTextSize(1);
-  canvas.drawString(label, bx + 31, by + bh / 2);
 }
 
 static void renderConnecting(const char* line) {
@@ -265,8 +238,8 @@ static void renderConnecting(const char* line) {
 
 static void renderIdle() {
   canvas.fillScreen(COL_BG);
-  drawSolveRing(false);
-  drawUpperTouchAction("CASE STUDY");
+  canvas.fillArc(CX, CY, CX - 6, CX - 2, 0, 360, COL_MUTED);
+  drawCaseButton();
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.setTextSize(2);
@@ -275,18 +248,18 @@ static void renderIdle() {
   canvas.setTextSize(1);
   canvas.drawString("tap lower half", CX, CY + 20);
   canvas.drawString(WiFi.localIP().toString().c_str(), CX, CY + 46);
-  drawSourceIndicator();
+  drawSourceIconPill();
   canvas.pushSprite(0, 0);
 }
 
 static void renderSolving() {
   canvas.fillScreen(COL_BG);
-  drawSolveRing(true);
+  const int sweep = (millis() / 4) % 360;
+  canvas.fillArc(CX, CY, CX - 10, CX - 4, sweep, sweep + 80, COL_ACCENT);
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.setTextSize(2);
   canvas.drawString("Thinking", CX, CY);
-  drawSourceIndicator();
   canvas.pushSprite(0, 0);
 }
 
@@ -336,7 +309,7 @@ static void drawWrappedCentered(const String& text, int cx, int topY,
 static void renderAnswer() {
   canvas.fillScreen(COL_BG);
   if (g_dispShowConfidence) drawConfidenceRing(g_answer.confidence);
-  drawUpperTouchAction("CASE STUDY");
+  drawCaseButton();
 
   canvas.setTextDatum(textdatum_t::middle_center);
 
@@ -365,7 +338,6 @@ static void renderAnswer() {
     canvas.setTextColor(COL_ACCENT, COL_BG);
     canvas.drawString("cached", CX, CY + 64);
   }
-  drawSourceIndicator();
   canvas.pushSprite(0, 0);
 }
 
@@ -381,7 +353,6 @@ static void renderError(const char* msg) {
   canvas.drawString(msg, CX, CY + 14);
   canvas.setTextColor(COL_TEXT, COL_BG);
   canvas.drawString("tap to retry", CX, CY + 40);
-  drawSourceIndicator();
   canvas.pushSprite(0, 0);
 }
 
@@ -394,11 +365,31 @@ static void drawCameraIcon(int cx, int cy, int s, uint16_t col) {
   canvas.fillCircle(cx, cy, s / 6, COL_BG);
 }
 
+static void drawCaseSwitchTab(const char* label) {
+  const int bw = 100, bh = 26, by = 26;
+  const int bx = CX - bw / 2;
+  canvas.drawRoundRect(bx, by, bw, bh, 13, COL_ACCENT);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_ACCENT, COL_BG);
+  canvas.setTextSize(1);
+  canvas.drawString(label, CX, by + bh / 2);
+}
+
+static void drawCaseExitButton() {
+  const int bw = 116, bh = 30, by = (int)H - 44;
+  const int bx = CX - bw / 2;
+  canvas.fillRoundRect(bx, by, bw, bh, 8, COL_BAD);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.setTextColor(COL_BG, COL_BAD);
+  canvas.setTextSize(1);
+  canvas.drawString("Exit & clear", CX, by + bh / 2);
+}
+
 // Case-study page 1 — capture: tap the camera to cache each scenario screen.
 static void renderCaseCapture() {
   canvas.fillScreen(COL_BG);
   canvas.setTextDatum(textdatum_t::middle_center);
-  drawUpperTouchAction("GO TO SOLVE");
+  drawCaseSwitchTab("Go to Solve");
 
   const bool flashing = g_caseFlashAt && (millis() - g_caseFlashAt < 1600);
   if (g_caseCapturing) {
@@ -424,7 +415,7 @@ static void renderCaseCapture() {
   snprintf(c, sizeof(c), "Screens: %d", g_caseCount);
   canvas.drawString(c, CX, H - 60);
 
-  drawLowerTouchAction("EXIT & CLEAR");
+  drawCaseExitButton();
   canvas.pushSprite(0, 0);
 }
 
@@ -432,7 +423,7 @@ static void renderCaseCapture() {
 static void renderCaseSolve() {
   canvas.fillScreen(COL_BG);
   canvas.setTextDatum(textdatum_t::middle_center);
-  drawUpperTouchAction("GO TO CAPTURE");
+  drawCaseSwitchTab("Go to Capture");
 
   if (g_caseSolving) {
     const int sweep = (millis() / 4) % 360;
@@ -460,7 +451,7 @@ static void renderCaseSolve() {
     canvas.drawString("tap to answer", CX, CY + 20);
   }
 
-  drawLowerTouchAction("EXIT & CLEAR");
+  drawCaseExitButton();
   canvas.pushSprite(0, 0);
 }
 
@@ -847,7 +838,7 @@ static bool factoryResetRequested() {
 
 // Taps whose press point is further than this from the centre are ignored, so resting a
 // finger on the round bezel/frame no longer triggers the on-screen buttons.
-static const int32_t TAP_RADIUS = 120;
+static const int32_t TAP_RADIUS = 106;
 
 // Poll the touch panel once and classify the gesture. A press released without travelling
 // (and within the dial) is a tap; a downward drag that starts near the top edge is a
@@ -881,29 +872,20 @@ static void pollGestures(bool* tap, bool* swipeDown) {
   }
 }
 
-static bool tapInUpperArc() {
+static bool tapInCaseButton() {
   const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
-  if (g_gestureStartY < 12) return dx <= 56;
-  if (g_gestureStartY < 28) return dx <= 80;
-  return g_gestureStartY <= 52 && dx <= 94;
-}
-
-static bool tapInLowerArc() {
-  const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
-  const int32_t fromBottom = (int32_t)H - g_gestureStartY;
-  if (fromBottom < 12) return dx <= 56;
-  if (fromBottom < 28) return dx <= 80;
-  return fromBottom <= 52 && dx <= 94;
+  return g_gestureStartY >= 20 && g_gestureStartY <= 58 && dx <= 52;
 }
 static bool tapInLowerHalf() {
   return g_gestureStartY > (int32_t)H / 2;
 }
 
 static bool tapCaseSwitch() {
-  return tapInUpperArc();
+  const int32_t dx = g_gestureStartX > CX ? g_gestureStartX - CX : CX - g_gestureStartX;
+  return g_gestureStartY >= 20 && g_gestureStartY <= 58 && dx <= 52;
 }
 static bool tapCaseExit() {
-  return tapInLowerArc();
+  return g_gestureStartY > (int32_t)H - 50;
 }
 
 // ---------------------------------------------------------------------------
@@ -1192,7 +1174,7 @@ void loop() {
     case UiState::Idle:
       renderIdle();
       if (tapped) {
-        if (tapInUpperArc()) {
+        if (tapInCaseButton()) {
           enterCaseStudy();
         } else if (tapInLowerHalf() && wsTrigger()) {
           g_triggerAt = millis();
@@ -1215,7 +1197,7 @@ void loop() {
     case UiState::Answer:
       renderAnswer();
       if (tapped) {
-        if (tapInUpperArc()) {
+        if (tapInCaseButton()) {
           enterCaseStudy();
         } else if (tapInLowerHalf() && wsTrigger()) {  // lower half → solve next
           g_triggerAt = millis();
