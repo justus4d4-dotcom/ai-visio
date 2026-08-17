@@ -72,6 +72,27 @@ System OCR dependency (Debian/Ubuntu LXC):
 # No system OCR needed — images go directly to Gemini.
 ```
 
+## Development and release process
+
+All bug fixes, features, and other application changes start from an up-to-date
+`main` branch:
+
+1. Create a focused branch named `bug/<topic>`, `feature/<topic>`, or
+   `chore/<topic>`.
+2. Implement the change and run the smallest relevant tests, lint, build, and
+   firmware checks before opening a pull request.
+3. Open a pull request into `main`. The public-release validation workflow runs
+   for every pull request.
+4. Merge only after the checks pass. Do not push feature work directly to
+   `main`.
+5. The merged pull request automatically receives the next GitHub patch release
+   and semver tag. Include `#minor` or `#major` in the merge commit message when
+   that release needs a larger semver bump.
+
+Protect `main` in GitHub with a pull-request requirement and required status
+check for **Public release validation** to enforce this process for all
+contributors.
+
 ## Production (LXC + systemd)
 
 See [deploy/README.md](deploy/README.md).

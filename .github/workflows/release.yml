@@ -1,17 +1,17 @@
 name: Release
 
-# Auto-publish a GitHub Release for every change merged to main. The in-app updater
+# Auto-publish a GitHub Release after a pull request is merged to main. The in-app updater
 # (Settings → Update) tracks the newest non-prerelease tag, so each release becomes an
 # installable version. Versions are semver tags "vMAJOR.MINOR.PATCH".
 #
 # Bump level (default: patch):
 #   * put "#minor" or "#major" anywhere in the pushed commit message, or
 #   * run this workflow manually (Actions → Release → Run workflow) and pick a level.
-# Add "[skip release]" to a commit message to skip publishing.
 
 on:
-  push:
+  pull_request:
     branches: [main]
+    types: [closed]
   workflow_dispatch:
     inputs:
       bump:
@@ -30,12 +30,14 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history + tags)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -56,11 +58,6 @@ jobs:
           set -euo pipefail
 
           msg="$(git log -1 --pretty=%B)"
-          if printf '%s' "$msg" | grep -qiE '\[skip release\]|\[release skip\]'; then
-            echo "Commit requests skip — no release."
-            exit 0
-          fi
-
           # Decide the bump level: manual input > commit-message tag > patch.
           bump="${DISPATCH_BUMP:-auto}"
           if [ "$bump" = "auto" ] || [ -z "$bump" ]; then
@@ -96,6 +93,5 @@ jobs:
           # Settings → Devices → "Load latest from GitHub".
           gh release create "$next" \
             --title "$next" \
-            --target "$GITHUB_SHA" \
-            --generate-notes \
-            "firmware/.pio/build/waveshare-s3-round/firmware.bin#ai-visio-display-${next}.bin"
+            --target "$(git rev-parse HEAD)" \
+            --generate-notes
