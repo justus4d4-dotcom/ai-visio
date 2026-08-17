@@ -294,6 +294,16 @@ class SourceState(BaseModel):
     camera_frame_ready: bool = False
 
 
+def _source_message() -> dict[str, object]:
+    state = get_source()
+    available = True
+    if state.source == "agent":
+        available = state.agent_online
+    elif state.source == "camera":
+        available = state.camera_online
+    return {"type": "source", "source": state.source, "available": available}
+
+
 class AgentHeartbeat(BaseModel):
     host: str | None = None
     instance: str | None = None
@@ -322,7 +332,7 @@ def get_source() -> SourceState:
 
 
 @router.post("/source", response_model=SourceState)
-def set_source(update: SourceUpdate, request: Request) -> SourceState:
+async def set_source(update: SourceUpdate, request: Request) -> SourceState:
     """Choose which capture source answers triggers: browser tab, native agent, or phone."""
     if update.source not in _CAPTURE_SOURCES:
         raise HTTPException(
@@ -331,6 +341,7 @@ def set_source(update: SourceUpdate, request: Request) -> SourceState:
         )
     _capture["source"] = update.source
     _capture["user_key"] = auth.current_user_key(request)
+    await hub.broadcast(_source_message())
     return get_source()
 
 
@@ -610,7 +621,8 @@ async def device_ws(ws: WebSocket) -> None:
     cid = await hub.connect(ws)
     try:
         # Send current state immediately so a freshly-connected device syncs.
-        await ws.send_json({"type": "state", **_current().model_dump()})
+        source_message = _source_message()
+        await ws.send_json({"type": "state", **source_message, **_current().model_dump()})
         # Sync the device's display preferences on connect (e.g. after a reboot).
         await ws.send_json({"type": "display_config", **_display})
         while True:

@@ -98,7 +98,9 @@ powering on** — this wipes WiFi + server settings and reopens the portal.
 ## Alternative: deploy with the Arduino IDE
 
 If PlatformIO/esptool can't flash over the CH343 USB-UART bridge, use the Arduino
-IDE sketch in [arduino/ai_visio_display/](arduino/ai_visio_display/) (same code).
+IDE sketch in [arduino/ai_visio_display/](arduino/ai_visio_display/). It includes the
+same maintained source as the PlatformIO build, so both distribution paths have
+identical display behavior.
 
 1. Install the **CH34x Mac driver** (required on macOS):
    https://files.waveshare.com/wiki/common/CH34XSER_MAC.7z — then reboot.

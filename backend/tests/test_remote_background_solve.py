@@ -135,6 +135,30 @@ def test_browser_trigger_remains_available_to_browser_poll() -> None:
     assert result.trigger_id == trigger_id
 
 
+def test_source_change_is_broadcast_to_connected_displays(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broadcasts: list[dict[str, object]] = []
+
+    async def broadcast(message: dict[str, object]) -> None:
+        broadcasts.append(message)
+
+    monkeypatch.setattr(remote.hub, "broadcast", broadcast)
+    monkeypatch.setattr(remote.auth, "current_user_key", lambda request: "owner@example.com")
+
+    result = asyncio.run(
+        remote.set_source(
+            remote.SourceUpdate(source="camera"),
+            remote.Request({"type": "http", "headers": []}),
+        )
+    )
+
+    assert result.source == "camera"
+    assert broadcasts == [
+        {"type": "source", "source": "camera", "available": result.camera_online}
+    ]
+
+
 def test_case_study_solve_remains_available_to_browser_poll() -> None:
     remote._capture["source"] = "camera"
     remote._state.update(status="idle", pending=False, scenario_count=2)
