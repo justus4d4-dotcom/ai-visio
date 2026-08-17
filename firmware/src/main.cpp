@@ -23,6 +23,10 @@
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <HTTPUpdate.h>
+#ifdef RECOVERY_PROVISIONING
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#endif
 
 #include "lgfx_config.h"
 
@@ -909,6 +913,45 @@ static void saveServerUrl(const String& url) {
   g_serverUrl = url;
 }
 
+static bool applyProvisioningCommand(String line) {
+  line.trim();
+  const int first = line.indexOf('|');
+  const int second = first < 0 ? -1 : line.indexOf('|', first + 1);
+  const int third = second < 0 ? -1 : line.indexOf('|', second + 1);
+  if (!line.startsWith("WIFI|") || first != 4 || second < 5 || third < 0) {
+    Serial.println("[provision] Invalid command");
+    return false;
+  }
+
+  const String ssid = line.substring(first + 1, second);
+  const String password = line.substring(second + 1, third);
+  String serverUrl = line.substring(third + 1);
+  serverUrl.trim();
+  while (serverUrl.endsWith("/")) serverUrl.remove(serverUrl.length() - 1);
+  if (ssid.isEmpty() || serverUrl.isEmpty()) {
+    Serial.println("[provision] SSID and backend URL are required");
+    return false;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(true);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  const uint32_t connectStartedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - connectStartedAt < 15000) {
+    delay(250);
+  }
+  WiFi.persistent(false);
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.printf("[provision] WiFi failed: status %d\n", (int)WiFi.status());
+    return false;
+  }
+
+  saveServerUrl(serverUrl);
+  Serial.printf("[provision] Connected to %s; IP %s\n",
+                ssid.c_str(), WiFi.localIP().toString().c_str());
+  return true;
+}
+
 // A short physical-serial provisioning window is available before the captive
 // portal starts. This recovers devices whose SoftAP cannot be started.
 static bool provisionFromSerial() {
@@ -922,55 +965,81 @@ static bool provisionFromSerial() {
     while (Serial.available()) {
       const char ch = (char)Serial.read();
       if (ch == '\r') continue;
-      if (ch != '\n') {
-        if (line.length() < 255) line += ch;
-        continue;
-      }
-
-      line.trim();
-      const int first = line.indexOf('|');
-      const int second = first < 0 ? -1 : line.indexOf('|', first + 1);
-      const int third = second < 0 ? -1 : line.indexOf('|', second + 1);
-      if (!line.startsWith("WIFI|") || first != 4 || second < 5 || third < 0) {
-        Serial.println("[serial] Invalid command");
+      if (ch == '\n') {
+        if (applyProvisioningCommand(line)) return true;
         line = "";
-        continue;
+      } else if (line.length() < 255) {
+        line += ch;
       }
-
-      const String ssid = line.substring(first + 1, second);
-      const String password = line.substring(second + 1, third);
-      String serverUrl = line.substring(third + 1);
-      serverUrl.trim();
-      while (serverUrl.endsWith("/")) serverUrl.remove(serverUrl.length() - 1);
-      if (ssid.isEmpty() || serverUrl.isEmpty()) {
-        Serial.println("[serial] SSID and backend URL are required");
-        line = "";
-        continue;
-      }
-
-      WiFi.mode(WIFI_STA);
-      WiFi.persistent(true);
-      WiFi.begin(ssid.c_str(), password.c_str());
-      const uint32_t connectStartedAt = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - connectStartedAt < 15000) {
-        delay(250);
-      }
-      WiFi.persistent(false);
-      if (WiFi.status() != WL_CONNECTED) {
-        Serial.printf("[serial] WiFi failed: status %d\n", (int)WiFi.status());
-        line = "";
-        continue;
-      }
-
-      saveServerUrl(serverUrl);
-      Serial.printf("[serial] Connected to %s; IP %s\n",
-                    ssid.c_str(), WiFi.localIP().toString().c_str());
-      return true;
     }
     delay(10);
   }
   return false;
 }
+
+#ifdef RECOVERY_PROVISIONING
+static const char* RECOVERY_SERVICE_UUID = "cf4f5ce6-8aea-4a9c-bf94-6dca7f55f900";
+static const char* RECOVERY_CONFIG_UUID = "cf4f5ce6-8aea-4a9c-bf94-6dca7f55f901";
+static String g_bleProvisioningCommand;
+static bool g_bleProvisioningPending = false;
+
+class RecoveryConfigCallbacks : public BLECharacteristicCallbacks {
+ public:
+  void onWrite(BLECharacteristic* characteristic) override {
+    const std::string value = characteristic->getValue();
+    if (value.length() > 0 && value.length() < 256) {
+      g_bleProvisioningCommand = String(value.c_str());
+      g_bleProvisioningPending = true;
+    }
+  }
+};
+
+static bool provisionFromAutomaticRecovery() {
+  static const uint32_t RECOVERY_WINDOW_MS = 60000;
+  BLEDevice::init("ai-visio-recovery");
+  BLEServer* server = BLEDevice::createServer();
+  BLEService* service = server->createService(RECOVERY_SERVICE_UUID);
+  BLECharacteristic* config = service->createCharacteristic(
+      RECOVERY_CONFIG_UUID,
+      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+  config->setCallbacks(new RecoveryConfigCallbacks());
+  service->start();
+  BLEAdvertising* advertising = BLEDevice::getAdvertising();
+  advertising->addServiceUUID(RECOVERY_SERVICE_UUID);
+  advertising->start();
+
+  Serial.println("[recovery] BLE ai-visio-recovery and serial WiFi setup open for 60 seconds");
+  Serial.println("[recovery] Send WIFI|ssid|password|http://host:port");
+  renderConnecting("BLE/serial WiFi");
+  String serialLine;
+  const uint32_t startedAt = millis();
+  while (millis() - startedAt < RECOVERY_WINDOW_MS) {
+    while (Serial.available()) {
+      const char ch = (char)Serial.read();
+      if (ch == '\r') continue;
+      if (ch == '\n') {
+        if (applyProvisioningCommand(serialLine)) {
+          BLEDevice::deinit(true);
+          return true;
+        }
+        serialLine = "";
+      } else if (serialLine.length() < 255) {
+        serialLine += ch;
+      }
+    }
+    if (g_bleProvisioningPending) {
+      g_bleProvisioningPending = false;
+      if (applyProvisioningCommand(g_bleProvisioningCommand)) {
+        BLEDevice::deinit(true);
+        return true;
+      }
+    }
+    delay(10);
+  }
+  BLEDevice::deinit(true);
+  return false;
+}
+#endif
 
 // Add the backend-URL parameter to the portal exactly once (it is reused).
 static void ensureParamAdded() {
@@ -1161,8 +1230,13 @@ void setup() {
     wifiManager.resetSettings();
   }
 
+#ifdef RECOVERY_PROVISIONING
+  // The dedicated recovery build opens serial and BLE provisioning automatically.
+  bool connected = provisionFromAutomaticRecovery();
+#else
   // A deliberate boot touch opens the physical serial recovery window.
   bool connected = forcePortal && provisionFromSerial();
+#endif
   // Fast path: try the built-in WiFi credentials first (no portal needed).
   if (!forcePortal) {
     connected = connected || connectWifiDirect();

@@ -118,6 +118,24 @@ This stores the WiFi credentials in ESP NVS and the backend URL in the device
 settings. It is intended for physical recovery only; do not paste the command
 into a shared terminal because it contains the WiFi password.
 
+### Automatic BLE and serial recovery build
+
+When the display touch and setup AP are both unavailable, build the dedicated
+recovery environment:
+
+```bash
+pio run -e waveshare-s3-round-recovery
+```
+
+For 60 seconds after boot it advertises BLE as **`ai-visio-recovery`** and
+accepts the same `WIFI|...` command through its writable characteristic:
+
+- Service UUID: `cf4f5ce6-8aea-4a9c-bf94-6dca7f55f900`
+- Configuration UUID: `cf4f5ce6-8aea-4a9c-bf94-6dca7f55f901`
+
+The command is also accepted over USB serial during that window. BLE recovery
+is unencrypted and intended only while the device is physically controlled.
+
 ## Alternative: deploy with the Arduino IDE
 
 If PlatformIO/esptool can't flash over the CH343 USB-UART bridge, use the Arduino
