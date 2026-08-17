@@ -37,7 +37,7 @@
 // Firmware version reported to the backend on connect (shown per-device in Settings).
 // Bump this on each firmware-affecting release. Override via build_flags if desired.
 #ifndef FW_VERSION
-#define FW_VERSION "v0.22.6"
+#define FW_VERSION "v0.22.8"
 #endif
 
 // Optional built-in WiFi credentials (auto-connect without the setup portal) and a
