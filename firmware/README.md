@@ -135,6 +135,9 @@ accepts the same `WIFI|...` command through its writable characteristic:
 
 The command is also accepted over USB serial during that window. BLE recovery
 is unencrypted and intended only while the device is physically controlled.
+Once credentials are provisioned, this recovery build reconnects to the saved
+WiFi network first and uses the saved backend URL; it opens BLE/serial recovery
+only when that network cannot be reached.
 
 ## Alternative: deploy with the Arduino IDE
 

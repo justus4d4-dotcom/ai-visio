@@ -41,7 +41,7 @@
 // Firmware version reported to the backend on connect (shown per-device in Settings).
 // Bump this on each firmware-affecting release. Override via build_flags if desired.
 #ifndef FW_VERSION
-#define FW_VERSION "v0.22.15"
+#define FW_VERSION "v0.22.17"
 #endif
 
 // Optional built-in WiFi credentials (auto-connect without the setup portal) and a
@@ -1134,6 +1134,29 @@ static bool connectWifiDirect() {
 #endif
 }
 
+// Reconnect to credentials already stored in ESP NVS without invoking
+// WiFiManager's captive portal. Recovery provisioning is a fallback, never the
+// normal boot path for a configured device.
+static bool connectSavedWifi() {
+  static const uint32_t SAVED_WIFI_TIMEOUT_MS = 15000;
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
+  WiFi.setSleep(false);
+  WiFi.begin();
+  Serial.println("[wifi] reconnecting with saved credentials...");
+  const uint32_t startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < SAVED_WIFI_TIMEOUT_MS) {
+    delay(250);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[wifi] reconnected; IP %s\n", WiFi.localIP().toString().c_str());
+    return true;
+  }
+  Serial.printf("[wifi] saved credential connection failed: status %d\n",
+                (int)WiFi.status());
+  return false;
+}
+
 // Open the scrollable settings screen on demand (swipe down from the top).
 // The config portal runs non-blocking so the screen stays interactive.
 static void openWifiSettings() {
@@ -1231,8 +1254,10 @@ void setup() {
   }
 
 #ifdef RECOVERY_PROVISIONING
-  // The dedicated recovery build opens serial and BLE provisioning automatically.
-  bool connected = provisionFromAutomaticRecovery();
+  // Reconnect normally first. The automatic recovery window is only for a
+  // device whose saved network cannot be reached.
+  bool connected = !forcePortal && connectSavedWifi();
+  if (!connected) connected = provisionFromAutomaticRecovery();
 #else
   // A deliberate boot touch opens the physical serial recovery window.
   bool connected = forcePortal && provisionFromSerial();
