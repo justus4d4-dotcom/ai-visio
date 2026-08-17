@@ -82,6 +82,14 @@ async def solve(
         raise HTTPException(status_code=422, detail=f"Invalid Gemini config: {exc}")
 
     data = await image.read()
+    return solve_image_bytes(data, cfg, db)
+
+
+def solve_image_bytes(data: bytes, cfg: GeminiConfig, db: Session) -> SolveResult:
+    """Solve already-loaded image bytes and persist usage/history.
+
+    Shared by the HTTP upload route and unattended ESP-triggered camera/agent solves.
+    """
     if not data:
         raise HTTPException(status_code=400, detail="Empty image")
     if len(data) > MAX_IMAGE_BYTES:
@@ -126,6 +134,8 @@ async def solve(
             logging.exception("Failed to log failed request")
         raise HTTPException(status_code=http_status, detail=detail)
 
+    if result is None:  # pragma: no cover - fallback_models always returns at least cfg.model
+        raise HTTPException(status_code=502, detail="Gemini returned no result.")
     result.elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     # Persist every solve to the request log / history (Feature 2 + 4: we always answer,

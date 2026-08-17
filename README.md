@@ -27,8 +27,8 @@ MacBook browser ──getDisplayMedia──▶ Next.js UI ──frames──▶ 
 
 ## How it works
 
-1. You open the web app on the MacBook and click **Start capture**, sharing the window
-   you want interpreted. Frames are grabbed every few seconds in the browser.
+1. Select a capture source. Browser capture shares a MacBook window; the native agent or
+   phone camera can continuously upload frames without keeping the main web app open.
 2. Each frame is sent to FastAPI and forwarded to **Google Gemini** image understanding
    (no local OCR). Identical frames are de-duplicated (sha256) so the same image is
    never sent twice.
@@ -38,6 +38,11 @@ MacBook browser ──getDisplayMedia──▶ Next.js UI ──frames──▶ 
 4. The result (a short label + text + confidence) is stored in Postgres and
    **pushed over WebSocket** to the configured ESP32 display, which renders it on the
    round screen.
+
+For unattended ESP control with the native agent or phone camera, select that source once
+while signed in and keep provider settings in **cloud** storage. The backend then uses the
+account's encrypted Gemini configuration to process device triggers; local-only API keys
+still require the main browser tab to remain open.
 
 ## Quick start (development)
 

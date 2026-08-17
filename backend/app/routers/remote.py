@@ -1,31 +1,41 @@
 """Remote-control bridge for the ESP32 touch display.
 
-The screenshot lives in the browser (it holds the MacBook screen share), so a device
-cannot capture it directly. Instead:
-
-  1. ESP32 touch  ->  POST /api/remote/trigger          (status: requested)
-  2. browser polls    GET  /api/remote/poll  -> {triggered: true}; it then captures a
-     frame, solves it, and posts the answer back:
-  3. browser      ->  POST /api/remote/status (solving) then POST /api/remote/answer
-  4. ESP32 polls      GET  /api/remote/answer -> {status, answer_id, answer}
-
-This is an in-memory single-session bridge for M3. It is superseded by per-device
-WebSocket push in M8.
+Browser capture is solved by the browser because it owns the screen-share stream.
+Native-agent and phone-camera frames are stored here and solved by a background backend
+task using the capture owner's encrypted account settings, so ESP control remains usable
+without an open main-app tab.
 """
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
+import logging
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from pydantic import BaseModel, ValidationError
 
-from app.schemas import SolveResult
+from app import auth, settings_store
+from app.database import SessionLocal
+from app.routers.solve import solve_image_bytes
+from app.schemas import GeminiConfig, SolveResult
 
 router = APIRouter(prefix="/api/remote", tags=["remote"])
+logger = logging.getLogger(__name__)
 
 # Status: idle | requested | solving | done | error
 _state: dict[str, object] = {
@@ -66,9 +76,8 @@ def set_display(cfg: dict) -> dict:
 #               mobile capture page (/camera) streams JPEG frames to the backend
 # Only one source consumes triggers at a time so a frame is never solved twice.
 #
-# In "agent"/"camera" modes the source only *records* the screen and pushes frames here;
-# the browser (which holds the BYOK Gemini key) solves the latest frame on a trigger. So
-# neither the agent nor the phone ever needs the API key.
+# In "agent"/"camera" modes the source only records and uploads. The backend solves ESP
+# triggers using the selected account's cloud-synced key, so neither capture client needs it.
 _CAPTURE_SOURCES = ("browser", "agent", "camera")
 
 _capture: dict[str, object] = {
@@ -76,6 +85,8 @@ _capture: dict[str, object] = {
     "frame": None,            # bytes | None — latest screen frame from the owner agent
     "frame_at": None,         # datetime | None
     "frame_ct": "image/jpeg",  # content type of the stored frame
+    # Account whose encrypted, cloud-synced provider config powers unattended solves.
+    "user_key": None,
 }
 
 # The iPhone camera source keeps its own frame slot, separate from the agent's, so a
@@ -226,6 +237,20 @@ class DeviceHub:
 
 hub = DeviceHub()
 
+# Backend-owned camera/agent solves run one at a time. Keep strong references to tasks so
+# they cannot be garbage-collected before completion.
+_solve_lock = asyncio.Lock()
+_solve_tasks: set[asyncio.Task[None]] = set()
+
+
+@dataclass(frozen=True)
+class BackendTrigger:
+    id: str
+    source: str
+    user_key: str | None
+    frame: bytes | None
+    error: str | None = None
+
 
 class TriggerResponse(BaseModel):
     ok: bool
@@ -297,7 +322,7 @@ def get_source() -> SourceState:
 
 
 @router.post("/source", response_model=SourceState)
-def set_source(update: SourceUpdate) -> SourceState:
+def set_source(update: SourceUpdate, request: Request) -> SourceState:
     """Choose which capture source answers triggers: browser tab, native agent, or phone."""
     if update.source not in _CAPTURE_SOURCES:
         raise HTTPException(
@@ -305,6 +330,7 @@ def set_source(update: SourceUpdate) -> SourceState:
             detail=f"source must be one of {', '.join(_CAPTURE_SOURCES)}",
         )
     _capture["source"] = update.source
+    _capture["user_key"] = auth.current_user_key(request)
     return get_source()
 
 
@@ -330,9 +356,9 @@ async def upload_frame(
 ) -> dict[str, object]:
     """The native agent pushes the latest screen frame here (no API key needed).
 
-    The browser fetches this frame with GET /frame and does the Gemini solve using its
-    own BYOK key, so the agent only ever *records* the screen. Frames from non-owner
-    agents are ignored so a second running agent can't flicker the preview.
+    The browser may fetch this frame for preview/manual solves; unattended ESP solves use
+    it directly in the backend. Frames from non-owner agents are ignored so a second
+    running agent cannot flicker the preview.
     """
     iid = instance or "default"
     _touch_agent(iid, None)
@@ -365,8 +391,8 @@ async def upload_camera_frame(image: UploadFile = File(...)) -> dict[str, object
     """The phone's /camera page pushes a cropped screen frame here (no API key needed).
 
     The phone captures its rear camera, lets the user crop/deskew the on-screen area, and
-    streams the resulting JPEG at ~1-2 fps. The browser fetches it with GET /camera/frame
-    and solves with its own BYOK key, so the phone only ever *records* — like the agent.
+    streams the resulting JPEG at ~1-2 fps. The phone only records; the main browser may
+    fetch it for preview/manual solves, while unattended ESP solves run in the backend.
     """
     data = await image.read()
     _camera["frame"] = data
@@ -387,14 +413,129 @@ def get_camera_frame() -> Response:
     )
 
 
-@router.post("/trigger", response_model=TriggerResponse)
-def trigger() -> TriggerResponse:
-    """Called by the ESP32 when the screen is touched."""
+def _fresh_backend_frame(source: str) -> bytes:
+    if source == "camera":
+        if not _camera_fresh():
+            raise RuntimeError("No fresh camera frame is available.")
+        return bytes(_camera["frame"])  # type: ignore[arg-type]
+    if source == "agent":
+        if not _frame_fresh():
+            raise RuntimeError("No fresh native-agent frame is available.")
+        return bytes(_capture["frame"])  # type: ignore[arg-type]
+    raise RuntimeError("Browser capture requires an open browser tab.")
+
+
+def _load_provider_config(user_key: str) -> GeminiConfig:
+    with SessionLocal() as db:
+        raw = settings_store.get_settings(db, user_key).get("provider")
+    if not isinstance(raw, dict) or not raw.get("api_key"):
+        raise RuntimeError(
+            "No cloud-synced Gemini configuration is available for unattended solving."
+        )
+    try:
+        return GeminiConfig(**raw)
+    except ValidationError as exc:
+        raise RuntimeError(f"The saved Gemini configuration is invalid: {exc}") from exc
+
+
+def _solve_unattended(frame: bytes, user_key: str) -> SolveResult:
+    cfg = _load_provider_config(user_key)
+    with SessionLocal() as db:
+        return solve_image_bytes(frame, cfg, db)
+
+
+def _backend_trigger(trigger_id: str) -> BackendTrigger:
+    source = str(_capture["source"])
+    user_key = _capture.get("user_key")
+    try:
+        frame = _fresh_backend_frame(source)
+    except RuntimeError as exc:
+        return BackendTrigger(
+            id=trigger_id,
+            source=source,
+            user_key=user_key if isinstance(user_key, str) else None,
+            frame=None,
+            error=str(exc),
+        )
+    return BackendTrigger(
+        id=trigger_id,
+        source=source,
+        user_key=user_key if isinstance(user_key, str) else None,
+        frame=frame,
+    )
+
+
+async def _process_backend_trigger(trigger: BackendTrigger) -> None:
+    async with _solve_lock:
+        try:
+            if _state["trigger_id"] != trigger.id:
+                return
+            if trigger.error:
+                raise RuntimeError(trigger.error)
+            if not trigger.user_key:
+                raise RuntimeError(
+                    "Select the camera or agent source once while signed in before "
+                    "using unattended ESP control."
+                )
+            if trigger.frame is None:
+                raise RuntimeError("No frame is available for unattended solving.")
+            _state["status"] = "solving"
+            await hub.broadcast({"type": "status", **_current().model_dump()})
+            result = await asyncio.to_thread(
+                _solve_unattended, trigger.frame, trigger.user_key
+            )
+        except Exception as exc:
+            logger.exception("Unattended solve failed for trigger %s", trigger.id)
+            if _state["trigger_id"] != trigger.id:
+                return
+            _state["status"] = "error"
+            await hub.broadcast(
+                {
+                    "type": "status",
+                    **_current().model_dump(),
+                    "detail": str(getattr(exc, "detail", exc)),
+                }
+            )
+            return
+
+        if _state["trigger_id"] != trigger.id:
+            return
+        _state["answer"] = result.model_dump()
+        _state["answer_id"] = str(uuid.uuid4())
+        _state["status"] = "done"
+        await hub.broadcast({"type": "answer", **_current().model_dump()})
+
+
+def _schedule_backend_trigger(trigger: BackendTrigger) -> None:
+    task = asyncio.create_task(_process_backend_trigger(trigger))
+    _solve_tasks.add(task)
+    task.add_done_callback(_solve_tasks.discard)
+
+
+def _request(action: str) -> str:
     tid = str(uuid.uuid4())
-    _state["pending"] = True
     _state["trigger_id"] = tid
-    _state["action"] = "solve"
+    _state["action"] = action
     _state["status"] = "requested"
+    case_context_active = int(_state.get("scenario_count") or 0) > 0
+    if (
+        action == "solve"
+        and not case_context_active
+        and _capture["source"] in ("agent", "camera")
+    ):
+        _state["pending"] = False
+        _schedule_backend_trigger(_backend_trigger(tid))
+    else:
+        _state["pending"] = True
+    if action == "clear_case":
+        _state["scenario_count"] = 0
+    return tid
+
+
+@router.post("/trigger", response_model=TriggerResponse)
+async def trigger() -> TriggerResponse:
+    """Called by the ESP32 when the screen is touched."""
+    tid = _request("solve")
     return TriggerResponse(ok=True, trigger_id=tid)
 
 
@@ -479,11 +620,8 @@ async def device_ws(ws: WebSocket) -> None:
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "trigger":
-                # A touch on the device: mark pending so the browser solves the frame.
-                _state["pending"] = True
-                _state["trigger_id"] = str(uuid.uuid4())
-                _state["action"] = "solve"
-                _state["status"] = "requested"
+                # Camera/agent sources solve server-side; browser capture still polls.
+                _request("solve")
             elif msg.get("type") == "hello":
                 # The device announced its firmware version on connect.
                 v = msg.get("version")
@@ -492,10 +630,7 @@ async def device_ws(ws: WebSocket) -> None:
             elif msg.get("type") == "capture_scenario":
                 # Case-study mode: the device asked to capture the current screen as a
                 # scenario. The browser transcribes + caches it (it holds the API key).
-                _state["pending"] = True
-                _state["trigger_id"] = str(uuid.uuid4())
-                _state["action"] = "scenario"
-                _state["status"] = "requested"
+                _request("scenario")
             elif msg.get("type") == "ota_status":
                 # The device reports its firmware-update progress so the settings OTA
                 # panel can show it (e.g. "updating" → reboot → reconnect).
@@ -505,10 +640,7 @@ async def device_ws(ws: WebSocket) -> None:
             elif msg.get("type") == "case_exit":
                 # The device left case-study mode: tell the browser (via the poll) to drop
                 # all cached scenario pages/content for a fresh start next time.
-                _state["pending"] = True
-                _state["trigger_id"] = str(uuid.uuid4())
-                _state["action"] = "clear_case"
-                _state["status"] = "requested"
+                _request("clear_case")
     except WebSocketDisconnect:
         hub.disconnect(cid)
     except Exception:  # noqa: BLE001

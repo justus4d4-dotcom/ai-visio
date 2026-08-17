@@ -432,8 +432,8 @@ export default function Home() {
 
   // ESP32 remote control: watch for a touch trigger from the device. On a trigger,
   // capture + interpret the current frame, then post the result back so the device can
-  // display it. This browser tab answers triggers when it is the selected source
-  // (browser + capturing), or when the native agent is the source (agent online).
+  // display it. Camera and native-agent solve triggers are claimed by the backend before
+  // this poll; the loop remains active for browser capture and case-study actions.
   useEffect(() => {
     const browserReady = captureSource === "browser" && capturing;
     const agentReady = captureSource === "agent" && agentOnline;
