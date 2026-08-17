@@ -39,6 +39,17 @@ jobs:
           fetch-depth: 0
           ref: main
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build ESP firmware
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install platformio
+          pio run --project-dir firmware
+
       - name: Compute next version and publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,7 +89,8 @@ jobs:
           fi
 
           echo "Publishing release ${next} (bump: ${bump}, previous: ${latest:-none})."
-          # Creates the tag on this commit and a release with auto-generated notes.
+          # Creates the tag on this commit and attaches the OTA image expected by
+          # Settings → Devices → "Load latest from GitHub".
           gh release create "$next" \
             --title "$next" \
             --target "$(git rev-parse HEAD)" \
